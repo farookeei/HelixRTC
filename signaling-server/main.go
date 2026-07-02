@@ -4,9 +4,47 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
+
+// Message represents the JSON structure for all communication between clients and the server.
+type Message struct {
+	Type   string `json:"type"`             // "join", "offer", "answer", "candidate", "leave"
+	Sender string `json:"sender,omitempty"`  // Unique ID of the client sending the message
+	Target string `json:"target,omitempty"`  // Unique ID of the client this message is meant for (for 1-to-1 routing)
+	Room   string `json:"room,omitempty"`    // Room ID
+	Data   string `json:"data,omitempty"`    // Raw payload (SDP Offer/Answer or ICE Candidate string)
+}
+
+// Client represents a single connected WebSocket client.
+type Client struct {
+	ID   string
+	Room *Room
+	Conn *websocket.Conn
+	Send chan []byte // Channel to queue outgoing messages for this client
+}
+
+// Room represents a single video call session containing multiple clients.
+type Room struct {
+	ID      string
+	Clients map[*Client]bool
+	mu      sync.RWMutex // Protects the Clients map from concurrent read/writes
+}
+
+// Hub maintains the set of active rooms.
+type Hub struct {
+	Rooms map[string]*Room
+	mu    sync.RWMutex // Protects the Rooms map from concurrent read/writes
+}
+
+// globalHub holds all active rooms globally.
+var globalHub = &Hub{
+	Rooms: make(map[string]*Room),
+}
+
+
 
 // upgrader holds configuration for upgrading HTTP connections to WebSockets
 var upgrader = websocket.Upgrader{
