@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -54,38 +55,119 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// handleConnections is our HTTP handler function that upgrades to WebSockets
+// writePump handles sending messages from the Client's Send channel down the WebSocket
+func (c *Client) writePump() {
+	defer func() {
+		c.Conn.Close()
+	}()
+
+	for {
+		// Wait for a message to appear in the Send channel
+		message, ok := <-c.Send
+		if !ok {
+			// Channel was closed
+			c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+			return
+		}
+
+		// Write the message to the actual WebSocket
+		err := c.Conn.WriteMessage(websocket.TextMessage, message)
+		if err != nil {
+			log.Printf("Error writing to websocket: %v", err)
+			return
+		}
+	}
+}
+
+// readPump listens for incoming messages from the WebSocket and routes them
+func (c *Client) readPump() {
+	defer func() {
+		// Cleanup when client disconnects
+		if c.Room != nil {
+			c.Room.mu.Lock()
+			delete(c.Room.Clients, c)
+			c.Room.mu.Unlock()
+			log.Printf("Client %s left room %s", c.ID, c.Room.ID)
+		}
+		c.Conn.Close()
+	}()
+
+	for {
+		var msg Message
+		// ReadJSON automatically reads the text and converts it into our Message struct!
+		err := c.Conn.ReadJSON(&msg)
+		if err != nil {
+			log.Printf("Client disconnected or error reading: %v", err)
+			break
+		}
+
+		// If the message has a sender, assign it to the client
+		if msg.Sender != "" {
+			c.ID = msg.Sender
+		}
+
+		switch msg.Type {
+		case "join":
+			// Lock global hub to find or create the room safely
+			globalHub.mu.Lock()
+			room, exists := globalHub.Rooms[msg.Room]
+			if !exists {
+				room = &Room{
+					ID:      msg.Room,
+					Clients: make(map[*Client]bool),
+				}
+				globalHub.Rooms[msg.Room] = room
+			}
+			globalHub.mu.Unlock()
+
+			// Assign client to room and add to room's client map safely
+			c.Room = room
+			room.mu.Lock()
+			room.Clients[c] = true
+			room.mu.Unlock()
+
+			log.Printf("Client %s joined room %s", c.ID, msg.Room)
+
+		case "offer", "answer", "candidate":
+			// We need to route this message to everyone else in the room
+			if c.Room != nil {
+				// Convert the struct back to raw JSON bytes so we can send it
+				msgBytes, _ := json.Marshal(msg)
+				
+				// Read-lock the room to loop through clients safely
+				c.Room.mu.RLock()
+				for client := range c.Room.Clients {
+					if client != c { // Don't echo it back to the person who sent it
+						client.Send <- msgBytes // Drop it into their outbox!
+					}
+				}
+				c.Room.mu.RUnlock()
+			}
+		}
+	}
+}
+
+// handleConnections upgrades the HTTP connection to a WebSocket and creates the Client
 func handleConnections(w http.ResponseWriter, r *http.Request) {
-	// Upgrade initial GET request to a WebSocket
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Error upgrading connection: %v", err)
 		return
 	}
-	// Defer closing the connection until the function exits
-	defer ws.Close()
 
-	log.Println("New client connected!")
-
-	// Infinite loop to continuously read messages from the client
-	for {
-		// Read message from client
-		messageType, msg, err := ws.ReadMessage()
-		if err != nil {
-			log.Printf("Error reading message (Client disconnected?): %v", err)
-			break
-		}
-
-		// Print the received message to our server console
-		fmt.Printf("Received: %s\n", msg)
-
-		// Echo the same message back to the client
-		err = ws.WriteMessage(messageType, msg)
-		if err != nil {
-			log.Printf("Error writing message: %v", err)
-			break
-		}
+	// Create our new Client object
+	client := &Client{
+		Conn: ws,
+		Send: make(chan []byte, 256), // Buffered channel outbox
 	}
+
+	log.Println("New WebSocket connection established")
+
+	// Start the writer in a new Goroutine
+	go client.writePump()
+
+	// Run the reader in the current Goroutine (this blocks until they disconnect)
+	client.readPump()
 }
 
 func main() {
