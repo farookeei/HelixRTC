@@ -5,15 +5,9 @@ import '../../data/repositories/webrtc_repository_impl.dart';
 import '../../domain/repositories/signaling_repository.dart';
 import '../../domain/repositories/webrtc_repository.dart';
 
-// ==========================================
-// 1. Dependency Injection (The interfaces)
-// ==========================================
-final signalingRepoProvider = Provider<SignalingRepository>((ref) {
-  return SignalingRepositoryImpl();
-});
-
-final webRtcRepoProvider = Provider<WebRTCRepository>((ref) {
-  return WebRTCRepositoryImpl();
+// The provider that the UI will actually watch
+final callProvider = NotifierProvider<CallNotifier, CallState>(() {
+  return CallNotifier();
 });
 
 // ==========================================
@@ -26,9 +20,7 @@ class CallState {
   CallState({this.localStream});
 
   CallState copyWith({MediaStream? localStream}) {
-    return CallState(
-      localStream: localStream ?? this.localStream,
-    );
+    return CallState(localStream: localStream ?? this.localStream);
   }
 }
 
@@ -36,7 +28,6 @@ class CallState {
 // 3. The State Notifier (The Brains)
 // ==========================================
 class CallNotifier extends Notifier<CallState> {
-  
   @override
   CallState build() {
     // Initial state: No camera stream yet.
@@ -47,16 +38,11 @@ class CallNotifier extends Notifier<CallState> {
   Future<void> initializeCamera() async {
     // Read the WebRTC repository from our provider above
     final webrtcRepo = ref.read(webRtcRepoProvider);
-    
+
     // Turn on the camera!
     final stream = await webrtcRepo.getLocalStream();
-    
+
     // Update the state. This automatically forces the Flutter UI to redraw with the new video!
     state = state.copyWith(localStream: stream);
   }
 }
-
-// The provider that the UI will actually watch
-final callProvider = NotifierProvider<CallNotifier, CallState>(() {
-  return CallNotifier();
-});

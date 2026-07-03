@@ -65,6 +65,9 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>HelixRTC needs camera access to capture video for calls.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>HelixRTC needs microphone access to capture audio for calls.</string>
 </dict>
 </plist>

@@ -1,7 +1,12 @@
 import 'dart:convert';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../domain/models/signaling_message.dart';
 import '../../domain/repositories/signaling_repository.dart';
+
+final signalingRepoProvider = Provider<SignalingRepository>((ref) {
+  return SignalingRepositoryImpl();
+});
 
 class SignalingRepositoryImpl implements SignalingRepository {
   WebSocketChannel? _channel;
@@ -34,12 +39,12 @@ class SignalingRepositoryImpl implements SignalingRepository {
     if (_channel == null) {
       return const Stream.empty();
     }
-    
+
     // We take the raw stream of strings from the WebSocket and "map" it
     return _channel!.stream.map((rawString) {
       // 1. Convert incoming String to a Map
       final jsonMap = jsonDecode(rawString as String) as Map<String, dynamic>;
-      
+
       // 2. Convert the Map into our strongly-typed Dart Object
       return SignalingMessage.fromJson(jsonMap);
     });
