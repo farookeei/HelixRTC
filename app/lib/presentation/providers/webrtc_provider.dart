@@ -8,41 +8,12 @@ import '../../domain/repositories/signaling_repository.dart';
 import '../../domain/repositories/webrtc_repository.dart';
 import '../../domain/models/signaling_message.dart';
 
+import 'call_state.dart';
+
 // The provider that the UI will actually watch
 final callProvider = NotifierProvider<CallNotifier, CallState>(() {
   return CallNotifier();
 });
-
-// ==========================================
-// 2. The State Object
-// ==========================================
-class CallState {
-  final MediaStream? localStream;
-  final bool isConnecting;
-  final bool isJoined;
-  final String? roomId;
-
-  CallState({
-    this.localStream,
-    this.isConnecting = false,
-    this.isJoined = false,
-    this.roomId,
-  });
-
-  CallState copyWith({
-    MediaStream? localStream,
-    bool? isConnecting,
-    bool? isJoined,
-    String? roomId,
-  }) {
-    return CallState(
-      localStream: localStream ?? this.localStream,
-      isConnecting: isConnecting ?? this.isConnecting,
-      isJoined: isJoined ?? this.isJoined,
-      roomId: roomId ?? this.roomId,
-    );
-  }
-}
 
 // ==========================================
 // 3. The State Notifier (The Brains)
