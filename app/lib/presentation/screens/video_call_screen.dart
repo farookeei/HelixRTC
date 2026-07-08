@@ -27,7 +27,7 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
 
   @override
   void dispose() {
-    // VERY IMPORTANT: Always clean up native video renderers to prevent RAM memory leaks!
+    //  clean up native video renderers to prevent RAM memory leaks!
     _localRenderer.dispose();
     super.dispose();
   }
@@ -86,15 +86,49 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // Tell the Riverpod Notifier to ask for permission and start the camera!
-          ref.read(callProvider.notifier).initializeCamera();
-        },
-        label: const Text('Turn Camera On'),
-        icon: const Icon(Icons.videocam),
-        backgroundColor: Colors.blueAccent,
-      ),
+      floatingActionButton: callState.localStream == null
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                // Tell the Riverpod Notifier to ask for permission and start the camera!
+                ref.read(callProvider.notifier).initializeCamera();
+              },
+              label: const Text('Turn Camera On'),
+              icon: const Icon(Icons.videocam),
+              backgroundColor: Colors.blueAccent,
+            )
+          : callState.isConnecting
+              ? const FloatingActionButton.extended(
+                  onPressed: null,
+                  label: Text('Connecting...'),
+                  icon: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                  backgroundColor: Colors.grey,
+                )
+              : callState.isJoined
+                  ? FloatingActionButton.extended(
+                      onPressed: () {
+                        // Leave the room
+                        ref.read(callProvider.notifier).leaveRoom();
+                      },
+                      label: Text('Leave Room ${callState.roomId}'),
+                      icon: const Icon(Icons.call_end),
+                      backgroundColor: Colors.red,
+                    )
+                  : FloatingActionButton.extended(
+                      onPressed: () {
+                        // Join the room via signaling
+                        ref.read(callProvider.notifier).joinRoom('101', 'Alice');
+                      },
+                      label: const Text('Join Room 101'),
+                      icon: const Icon(Icons.group_add),
+                      backgroundColor: Colors.green,
+                    ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
