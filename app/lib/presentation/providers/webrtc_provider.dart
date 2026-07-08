@@ -10,14 +10,10 @@ import '../../domain/models/signaling_message.dart';
 
 import 'call_state.dart';
 
-// The provider that the UI will actually watch
 final callProvider = NotifierProvider<CallNotifier, CallState>(() {
   return CallNotifier();
 });
 
-// ==========================================
-// 3. The State Notifier (The Brains)
-// ==========================================
 class CallNotifier extends Notifier<CallState> {
   @override
   CallState build() {
@@ -27,19 +23,16 @@ class CallNotifier extends Notifier<CallState> {
 
   /// Tells the repository to turn on the camera, then saves it in the state so the UI updates
   Future<void> initializeCamera() async {
-    // Read the WebRTC repository from our provider above
     final webrtcRepo = ref.read(webRtcRepoProvider);
 
     // Turn on the camera!
     final stream = await webrtcRepo.getLocalStream();
 
-    // Update the state. This automatically forces the Flutter UI to redraw with the new video!
     state = state.copyWith(localStream: stream);
   }
 
   /// Connects to the signaling server and joins a room
   Future<void> joinRoom(String roomId, String senderName) async {
-    // Prevent joining if already connected or in the process of connecting
     if (state.isConnecting || state.isJoined) return;
 
     state = state.copyWith(isConnecting: true);
@@ -63,10 +56,8 @@ class CallNotifier extends Notifier<CallState> {
         sender: senderName,
       );
 
-      // Send it!
       signalingRepo.sendMessage(message);
 
-      // Successfully joined!
       state = state.copyWith(
         isConnecting: false,
         isJoined: true,
@@ -87,6 +78,41 @@ class CallNotifier extends Notifier<CallState> {
 
   void _handleSignalingMessage(SignalingMessage message) {
     log('Received message: ${message.type} from ${message.sender}');
-    // TODO: - handle peer_joined, offer, answer, ice_candidate
+    
+    switch (message.type) {
+      case 'peer_joined':
+        _handlePeerJoined();
+        break;
+      // TODO: handle offer, answer, ice_candidate
+    }
+  }
+
+  Future<void> _handlePeerJoined() async {
+    await _initializePeerConnection();
+    // TODO: Create and send SDP Offer
+  }
+
+  Future<void> _initializePeerConnection() async {
+    final webrtcRepo = ref.read(webRtcRepoProvider);
+    
+    // 1. Create the Peer Connection
+    final pc = await webrtcRepo.createConnection();
+    
+    // 2. Add our local camera/mic stream so the other person can see/hear us
+    if (state.localStream != null) {
+      await pc.addStream(state.localStream!);
+    }
+    
+    // 3. Save it to state
+    state = state.copyWith(peerConnection: pc);
+    
+    // 4. Setup listeners (We will fill these in during later steps)
+    pc.onIceCandidate = (candidate) {
+      // TODO: send ICE candidate to signaling server
+    };
+    
+    pc.onAddStream = (stream) {
+      // TODO: save remote stream to state to render on UI
+    };
   }
 }

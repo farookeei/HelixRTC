@@ -17,13 +17,30 @@ class MockMediaStream extends Fake implements MediaStream {
   String get id => 'mock_stream_id';
 }
 
+class MockRTCPeerConnection extends Fake implements RTCPeerConnection {
+  List<MediaStream> localStreams = [];
+
+  @override
+  Future<void> addStream(MediaStream stream) async {
+    localStreams.add(stream);
+  }
+}
+
 class MockWebRTCRepository extends Fake implements WebRTCRepository {
   final MediaStream mockStream;
+  MockRTCPeerConnection? createdConnection;
+
   MockWebRTCRepository(this.mockStream);
 
   @override
   Future<MediaStream> getLocalStream() async {
     return mockStream;
+  }
+
+  @override
+  Future<RTCPeerConnection> createConnection() async {
+    createdConnection = MockRTCPeerConnection();
+    return createdConnection!;
   }
 }
 
@@ -31,7 +48,7 @@ class MockSignalingRepository extends Fake implements SignalingRepository {
   bool isConnected = false;
   SignalingMessage? lastMessageSent;
   final _messageController = StreamController<SignalingMessage>.broadcast();
-  
+
   @override
   Future<void> connect(String url) async {
     isConnected = true;
@@ -82,23 +99,69 @@ void main() {
     expect(callState.localStream?.id, 'mock_stream_id');
   });
 
-  test('CallNotifier joinRoom connects to signaling server and sends join message', () async {
-    final mockSigRepo = MockSignalingRepository();
+  test(
+    'CallNotifier joinRoom connects to signaling server and sends join message',
+    () async {
+      final mockSigRepo = MockSignalingRepository();
 
-    final container = ProviderContainer(
-      overrides: [signalingRepoProvider.overrideWithValue(mockSigRepo)],
-    );
-    addTearDown(container.dispose);
+      final container = ProviderContainer(
+        overrides: [signalingRepoProvider.overrideWithValue(mockSigRepo)],
+      );
+      addTearDown(container.dispose);
 
-    final notifier = container.read(callProvider.notifier);
+      final notifier = container.read(callProvider.notifier);
 
-    // Call joinRoom which doesn't exist yet! (Red Phase)
-    await notifier.joinRoom('1234', 'Alice');
+      // Call joinRoom which doesn't exist yet! (Red Phase)
+      await notifier.joinRoom('1234', 'Alice');
 
-    expect(mockSigRepo.isConnected, isTrue);
-    expect(mockSigRepo.lastMessageSent, isNotNull);
-    expect(mockSigRepo.lastMessageSent?.type, equals('join'));
-    expect(mockSigRepo.lastMessageSent?.room, equals('1234'));
-    expect(mockSigRepo.lastMessageSent?.sender, equals('Alice'));
-  });
+      expect(mockSigRepo.isConnected, isTrue);
+      expect(mockSigRepo.lastMessageSent, isNotNull);
+      expect(mockSigRepo.lastMessageSent?.type, equals('join'));
+      expect(mockSigRepo.lastMessageSent?.room, equals('1234'));
+      expect(mockSigRepo.lastMessageSent?.sender, equals('Alice'));
+    },
+  );
+
+  test(
+    'CallNotifier creates peer connection and adds stream on peer_joined message',
+    () async {
+      final mockStream = MockMediaStream();
+      final mockWebRtcRepo = MockWebRTCRepository(mockStream);
+      final mockSigRepo = MockSignalingRepository();
+
+      final container = ProviderContainer(
+        overrides: [
+          webRtcRepoProvider.overrideWithValue(mockWebRtcRepo),
+          signalingRepoProvider.overrideWithValue(mockSigRepo),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(callProvider.notifier);
+
+      // Setup state
+      await notifier.initializeCamera();
+      await notifier.joinRoom('101', 'Alice');
+
+      // Simulate incoming 'peer_joined' message
+      mockSigRepo.simulateIncomingMessage(
+        SignalingMessage(type: 'peer_joined', sender: 'Bob', room: '101'),
+      );
+
+      // Wait a tick for the stream to process
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      final callState = container.read(callProvider);
+
+      // VERIFY: Peer connection was created and stored in state
+      expect(callState.peerConnection, isNotNull);
+
+      // VERIFY: local stream was added to the peer connection
+      expect(mockWebRtcRepo.createdConnection, isNotNull);
+      expect(
+        mockWebRtcRepo.createdConnection!.localStreams,
+        contains(mockStream),
+      );
+    },
+  );
 }
