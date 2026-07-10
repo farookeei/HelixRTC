@@ -5,8 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../data/repositories/signaling_repository_impl.dart';
 import '../../data/repositories/webrtc_repository_impl.dart';
-import '../../domain/repositories/signaling_repository.dart';
-import '../../domain/repositories/webrtc_repository.dart';
 import '../../domain/models/signaling_message.dart';
 
 import 'call_state.dart';
@@ -200,7 +198,8 @@ class CallNotifier extends Notifier<CallState> {
     };
     
     pc.onAddStream = (stream) {
-      // TODO: save remote stream to state to render on UI
+      log('Received remote stream');
+      state = state.copyWith(remoteStream: stream);
     };
   }
 }

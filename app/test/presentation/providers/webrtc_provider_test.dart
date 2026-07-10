@@ -380,4 +380,40 @@ void main() {
     expect(mockWebRtcRepo.addedCandidates, isNotEmpty);
     expect(mockWebRtcRepo.addedCandidates.first.candidate, equals('remote_ip_999'));
   });
+
+  test('CallNotifier updates state with remote stream when peerConnection fires onAddStream', () async {
+    final mockStream = MockMediaStream();
+    final mockWebRtcRepo = MockWebRTCRepository(mockStream);
+    final mockSigRepo = MockSignalingRepository();
+
+    final container = ProviderContainer(
+      overrides: [
+        webRtcRepoProvider.overrideWithValue(mockWebRtcRepo),
+        signalingRepoProvider.overrideWithValue(mockSigRepo),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(callProvider.notifier);
+    await notifier.initializeCamera();
+    await notifier.joinRoom('101', 'Alice');
+
+    // Simulate joining so connection exists
+    mockSigRepo.simulateIncomingMessage(SignalingMessage(
+      type: 'peer_joined',
+      sender: 'Bob',
+      room: '101',
+    ));
+    await Future.delayed(const Duration(milliseconds: 10));
+
+    final mockRemoteStream = MockMediaStream();
+    // Simulate remote peer connection adding a stream
+    mockWebRtcRepo.createdConnection!.onAddStream?.call(mockRemoteStream);
+
+    await Future.delayed(const Duration(milliseconds: 10));
+
+    // VERIFY: remote stream is saved to state
+    final callState = container.read(callProvider);
+    expect(callState.remoteStream, equals(mockRemoteStream));
+  });
 }
