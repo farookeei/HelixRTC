@@ -176,9 +176,11 @@ class CallNotifier extends Notifier<CallState> {
     // 1. Create the Peer Connection
     final pc = await webrtcRepo.createConnection();
     
-    // 2. Add our local camera/mic stream so the other person can see/hear us
+    // 2. Add our local camera/mic tracks so the other person can see/hear us
     if (state.localStream != null) {
-      await pc.addStream(state.localStream!);
+      for (final track in state.localStream!.getTracks()) {
+        await pc.addTrack(track, state.localStream!);
+      }
     }
     
     // 3. Save it to state
@@ -197,9 +199,11 @@ class CallNotifier extends Notifier<CallState> {
       ));
     };
     
-    pc.onAddStream = (stream) {
-      log('Received remote stream');
-      state = state.copyWith(remoteStream: stream);
+    pc.onTrack = (event) {
+      log('Received remote track');
+      if (event.streams.isNotEmpty) {
+        state = state.copyWith(remoteStream: event.streams[0]);
+      }
     };
   }
 }

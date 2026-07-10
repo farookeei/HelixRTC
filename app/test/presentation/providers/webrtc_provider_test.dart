@@ -12,23 +12,38 @@ import 'package:app/data/repositories/signaling_repository_impl.dart';
 // ========================================================
 // 1. Manual Mocks using Dart's built-in Fake class
 // ========================================================
+class MockMediaStreamTrack extends Fake implements MediaStreamTrack {}
+
 class MockMediaStream extends Fake implements MediaStream {
   @override
   String get id => 'mock_stream_id';
+
+  @override
+  List<MediaStreamTrack> getTracks() => [MockMediaStreamTrack()];
+}
+
+class MockRTCRtpSender extends Fake implements RTCRtpSender {}
+
+class MockRTCTrackEvent extends Fake implements RTCTrackEvent {
+  @override
+  final List<MediaStream> streams;
+
+  MockRTCTrackEvent(this.streams);
 }
 
 class MockRTCPeerConnection extends Fake implements RTCPeerConnection {
-  List<MediaStream> localStreams = [];
+  List<MediaStreamTrack> localTracks = [];
 
   @override
   void Function(RTCIceCandidate candidate)? onIceCandidate;
 
   @override
-  void Function(MediaStream stream)? onAddStream;
+  void Function(RTCTrackEvent event)? onTrack;
 
   @override
-  Future<void> addStream(MediaStream stream) async {
-    localStreams.add(stream);
+  Future<RTCRtpSender> addTrack(MediaStreamTrack track, [MediaStream? stream]) async {
+    localTracks.add(track);
+    return MockRTCRtpSender();
   }
 }
 
@@ -227,8 +242,8 @@ void main() {
       // VERIFY: local stream was added to the peer connection
       expect(mockWebRtcRepo.createdConnection, isNotNull);
       expect(
-        mockWebRtcRepo.createdConnection!.localStreams,
-        contains(mockStream),
+        mockWebRtcRepo.createdConnection!.localTracks,
+        isNotEmpty,
       );
     },
   );
@@ -381,7 +396,7 @@ void main() {
     expect(mockWebRtcRepo.addedCandidates.first.candidate, equals('remote_ip_999'));
   });
 
-  test('CallNotifier updates state with remote stream when peerConnection fires onAddStream', () async {
+  test('CallNotifier updates state with remote stream when peerConnection fires onTrack', () async {
     final mockStream = MockMediaStream();
     final mockWebRtcRepo = MockWebRTCRepository(mockStream);
     final mockSigRepo = MockSignalingRepository();
@@ -408,7 +423,8 @@ void main() {
 
     final mockRemoteStream = MockMediaStream();
     // Simulate remote peer connection adding a stream
-    mockWebRtcRepo.createdConnection!.onAddStream?.call(mockRemoteStream);
+    final mockTrackEvent = MockRTCTrackEvent([mockRemoteStream]);
+    mockWebRtcRepo.createdConnection!.onTrack?.call(mockTrackEvent);
 
     await Future.delayed(const Duration(milliseconds: 10));
 
