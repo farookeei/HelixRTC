@@ -128,6 +128,22 @@ func (c *Client) readPump() {
 
 			log.Printf("Client %s joined room %s", c.ID, msg.Room)
 
+			// Notify others in the room that this peer joined!
+			joinedMsg := Message{
+				Type:   "peer_joined",
+				Sender: c.ID,
+				Room:   msg.Room,
+			}
+			msgBytes, _ := json.Marshal(joinedMsg)
+
+			room.mu.RLock()
+			for client := range room.Clients {
+				if client != c {
+					client.Send <- msgBytes // Tell them to start their peer connection
+				}
+			}
+			room.mu.RUnlock()
+
 		case "offer", "answer", "candidate":
 			// We need to route this message to everyone else in the room
 			if c.Room != nil {
