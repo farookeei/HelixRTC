@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 
@@ -14,6 +15,8 @@ final callProvider = NotifierProvider<CallNotifier, CallState>(() {
 });
 
 class CallNotifier extends Notifier<CallState> {
+  StreamSubscription<SignalingMessage>? _signalingSubscription;
+
   @override
   CallState build() {
     // Initial state: No camera stream yet.
@@ -44,7 +47,8 @@ class CallNotifier extends Notifier<CallState> {
       await signalingRepo.connect('ws://172.17.11.75:8080/ws');
 
       // Listen for incoming messages from the server
-      signalingRepo.onMessageReceived.listen((message) {
+      _signalingSubscription?.cancel();
+      _signalingSubscription = signalingRepo.onMessageReceived.listen((message) {
         _handleSignalingMessage(message);
       });
 
@@ -68,11 +72,27 @@ class CallNotifier extends Notifier<CallState> {
     }
   }
 
-  /// Disconnects from the signaling server and resets state
   void leaveRoom() {
     final signalingRepo = ref.read(signalingRepoProvider);
     signalingRepo.disconnect();
-    state = state.copyWith(isJoined: false, roomId: null);
+    
+    // Stop listening to old messages
+    _signalingSubscription?.cancel();
+    _signalingSubscription = null;
+    
+    // Close and dispose of the WebRTC peer connection
+    state.peerConnection?.close();
+    state.peerConnection?.dispose();
+    
+    // Reset state, but keep the local camera stream active
+    state = CallState(
+      localStream: state.localStream,
+      remoteStream: null,
+      peerConnection: null,
+      isConnecting: false,
+      isJoined: false,
+      roomId: null,
+    );
   }
 
   void _handleSignalingMessage(SignalingMessage message) {
