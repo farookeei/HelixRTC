@@ -90,7 +90,9 @@ class CallNotifier extends Notifier<CallState> {
       case 'answer':
         _handleAnswer(message);
         break;
-      // TODO: handle ice_candidate
+      case 'candidate':
+        _handleIceCandidate(message);
+        break;
     }
   }
 
@@ -154,6 +156,22 @@ class CallNotifier extends Notifier<CallState> {
     await webrtcRepo.setRemoteDescription(state.peerConnection!, description);
   }
 
+  Future<void> _handleIceCandidate(SignalingMessage message) async {
+    if (message.data == null || state.peerConnection == null) return;
+    
+    // 1. Parse the incoming ICE Candidate
+    final data = jsonDecode(message.data!);
+    final candidate = RTCIceCandidate(
+      data['candidate'],
+      data['sdpMid'],
+      data['sdpMLineIndex'],
+    );
+    
+    // 2. Add it to our WebRTC engine so it can find the other peer
+    final webrtcRepo = ref.read(webRtcRepoProvider);
+    await webrtcRepo.addIceCandidate(state.peerConnection!, candidate);
+  }
+
   Future<void> _initializePeerConnection() async {
     final webrtcRepo = ref.read(webRtcRepoProvider);
     
@@ -170,7 +188,15 @@ class CallNotifier extends Notifier<CallState> {
     
     // 4. Setup listeners (We will fill these in during later steps)
     pc.onIceCandidate = (candidate) {
-      // TODO: send ICE candidate to signaling server
+      if (state.roomId == null) return;
+      
+      // When our phone finds a new public IP (ICE Candidate), send it to the other person
+      final signalingRepo = ref.read(signalingRepoProvider);
+      signalingRepo.sendMessage(SignalingMessage(
+        type: 'candidate',
+        room: state.roomId!,
+        data: jsonEncode(candidate.toMap()),
+      ));
     };
     
     pc.onAddStream = (stream) {

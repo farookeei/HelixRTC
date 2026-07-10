@@ -44,10 +44,29 @@ class MockRTCSessionDescription extends Fake implements RTCSessionDescription {
   Map<String, dynamic> toMap() => {'sdp': sdp, 'type': type};
 }
 
+class MockRTCIceCandidate extends Fake implements RTCIceCandidate {
+  @override
+  final String? candidate;
+  @override
+  final String? sdpMid;
+  @override
+  final int? sdpMLineIndex;
+
+  MockRTCIceCandidate(this.candidate, this.sdpMid, this.sdpMLineIndex);
+
+  @override
+  Map<String, dynamic> toMap() => {
+        'candidate': candidate,
+        'sdpMid': sdpMid,
+        'sdpMLineIndex': sdpMLineIndex,
+      };
+}
+
 class MockWebRTCRepository extends Fake implements WebRTCRepository {
   final MediaStream mockStream;
   MockRTCPeerConnection? createdConnection;
   RTCSessionDescription? lastRemoteDescription;
+  List<RTCIceCandidate> addedCandidates = [];
 
   MockWebRTCRepository(this.mockStream);
 
@@ -82,6 +101,14 @@ class MockWebRTCRepository extends Fake implements WebRTCRepository {
     RTCSessionDescription description,
   ) async {
     lastRemoteDescription = description;
+  }
+
+  @override
+  Future<void> addIceCandidate(
+    RTCPeerConnection peerConnection,
+    RTCIceCandidate candidate,
+  ) async {
+    addedCandidates.add(candidate);
   }
 }
 
@@ -276,5 +303,81 @@ void main() {
     // VERIFY: An answer was sent back via signaling
     expect(mockSigRepo.lastMessageSent?.type, equals('answer'));
     expect(mockSigRepo.lastMessageSent?.data, contains('mock_answer_sdp'));
+  });
+
+  test('CallNotifier sends ICE candidate when local connection generates one', () async {
+    final mockStream = MockMediaStream();
+    final mockWebRtcRepo = MockWebRTCRepository(mockStream);
+    final mockSigRepo = MockSignalingRepository();
+
+    final container = ProviderContainer(
+      overrides: [
+        webRtcRepoProvider.overrideWithValue(mockWebRtcRepo),
+        signalingRepoProvider.overrideWithValue(mockSigRepo),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(callProvider.notifier);
+    await notifier.initializeCamera();
+    await notifier.joinRoom('101', 'Alice');
+
+    // Simulate joining to initialize peer connection
+    mockSigRepo.simulateIncomingMessage(SignalingMessage(
+      type: 'peer_joined',
+      sender: 'Bob',
+      room: '101',
+    ));
+    await Future.delayed(const Duration(milliseconds: 10));
+
+    // Force the mock connection to trigger its ICE candidate callback
+    final mockCandidate = MockRTCIceCandidate('mock_ip_123', 'video', 0);
+    mockWebRtcRepo.createdConnection!.onIceCandidate?.call(mockCandidate);
+
+    await Future.delayed(const Duration(milliseconds: 10));
+
+    // VERIFY: The candidate was sent via signaling server
+    expect(mockSigRepo.lastMessageSent?.type, equals('candidate'));
+    expect(mockSigRepo.lastMessageSent?.data, contains('mock_ip_123'));
+  });
+
+  test('CallNotifier handles incoming ICE candidate and adds it to WebRTC', () async {
+    final mockStream = MockMediaStream();
+    final mockWebRtcRepo = MockWebRTCRepository(mockStream);
+    final mockSigRepo = MockSignalingRepository();
+
+    final container = ProviderContainer(
+      overrides: [
+        webRtcRepoProvider.overrideWithValue(mockWebRtcRepo),
+        signalingRepoProvider.overrideWithValue(mockSigRepo),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(callProvider.notifier);
+    await notifier.initializeCamera();
+    await notifier.joinRoom('101', 'Alice');
+
+    // Simulate joining so connection exists
+    mockSigRepo.simulateIncomingMessage(SignalingMessage(
+      type: 'peer_joined',
+      sender: 'Bob',
+      room: '101',
+    ));
+    await Future.delayed(const Duration(milliseconds: 10));
+
+    // Simulate incoming 'candidate' message from Bob
+    mockSigRepo.simulateIncomingMessage(SignalingMessage(
+      type: 'candidate',
+      sender: 'Bob',
+      room: '101',
+      data: '{"candidate":"remote_ip_999","sdpMid":"audio","sdpMLineIndex":1}',
+    ));
+
+    await Future.delayed(const Duration(milliseconds: 10));
+
+    // VERIFY: The candidate was extracted and added to WebRTC repository
+    expect(mockWebRtcRepo.addedCandidates, isNotEmpty);
+    expect(mockWebRtcRepo.addedCandidates.first.candidate, equals('remote_ip_999'));
   });
 }
