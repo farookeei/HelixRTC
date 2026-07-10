@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -83,13 +84,74 @@ class CallNotifier extends Notifier<CallState> {
       case 'peer_joined':
         _handlePeerJoined();
         break;
-      // TODO: handle offer, answer, ice_candidate
+      case 'offer':
+        _handleOffer(message);
+        break;
+      case 'answer':
+        _handleAnswer(message);
+        break;
+      // TODO: handle ice_candidate
     }
   }
 
   Future<void> _handlePeerJoined() async {
     await _initializePeerConnection();
-    // TODO: Create and send SDP Offer
+    
+    if (state.peerConnection == null) return;
+    
+    // 1. Create the SDP Offer
+    final webrtcRepo = ref.read(webRtcRepoProvider);
+    final offer = await webrtcRepo.createOffer(state.peerConnection!);
+    
+    // 2. Send it to the other person via the signaling server
+    final signalingRepo = ref.read(signalingRepoProvider);
+    signalingRepo.sendMessage(SignalingMessage(
+      type: 'offer',
+      room: state.roomId,
+      data: jsonEncode(offer.toMap()),
+    ));
+  }
+
+  Future<void> _handleOffer(SignalingMessage message) async {
+    if (message.data == null) return;
+    
+    // If we just joined the room, we might not have initialized the connection yet
+    if (state.peerConnection == null) {
+      await _initializePeerConnection();
+    }
+    
+    if (state.peerConnection == null) return;
+
+    // 1. Parse the incoming Offer SDP
+    final data = jsonDecode(message.data!);
+    final description = RTCSessionDescription(data['sdp'], data['type']);
+    
+    // 2. Set it as the Remote Description
+    final webrtcRepo = ref.read(webRtcRepoProvider);
+    await webrtcRepo.setRemoteDescription(state.peerConnection!, description);
+    
+    // 3. Create our Answer
+    final answer = await webrtcRepo.createAnswer(state.peerConnection!);
+    
+    // 4. Send the Answer back via signaling
+    final signalingRepo = ref.read(signalingRepoProvider);
+    signalingRepo.sendMessage(SignalingMessage(
+      type: 'answer',
+      room: state.roomId,
+      data: jsonEncode(answer.toMap()),
+    ));
+  }
+
+  Future<void> _handleAnswer(SignalingMessage message) async {
+    if (message.data == null || state.peerConnection == null) return;
+    
+    // 1. Parse the incoming Answer SDP
+    final data = jsonDecode(message.data!);
+    final description = RTCSessionDescription(data['sdp'], data['type']);
+    
+    // 2. Set it as the Remote Description
+    final webrtcRepo = ref.read(webRtcRepoProvider);
+    await webrtcRepo.setRemoteDescription(state.peerConnection!, description);
   }
 
   Future<void> _initializePeerConnection() async {
