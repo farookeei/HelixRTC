@@ -186,54 +186,92 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
               icon: const Icon(Icons.videocam),
               backgroundColor: Colors.blueAccent,
             )
-          : callState.isConnecting
-              ? const FloatingActionButton.extended(
-                  onPressed: null,
-                  label: Text('Connecting...'),
-                  icon: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 1. Media Controls Toolbar
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    FloatingActionButton(
+                      heroTag: 'mic_toggle',
+                      onPressed: () => ref.read(callProvider.notifier).toggleAudio(),
+                      backgroundColor: callState.isAudioMuted ? Colors.red : Colors.white24,
+                      elevation: 0,
+                      child: Icon(callState.isAudioMuted ? Icons.mic_off : Icons.mic, color: Colors.white),
                     ),
+                    const SizedBox(width: 16),
+                    FloatingActionButton(
+                      heroTag: 'video_toggle',
+                      onPressed: () => ref.read(callProvider.notifier).toggleVideo(),
+                      backgroundColor: callState.isVideoMuted ? Colors.red : Colors.white24,
+                      elevation: 0,
+                      child: Icon(callState.isVideoMuted ? Icons.videocam_off : Icons.videocam, color: Colors.white),
+                    ),
+                    const SizedBox(width: 16),
+                    FloatingActionButton(
+                      heroTag: 'camera_switch',
+                      onPressed: () => ref.read(callProvider.notifier).switchCamera(),
+                      backgroundColor: Colors.white24,
+                      elevation: 0,
+                      child: const Icon(Icons.flip_camera_ios, color: Colors.white),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                
+                // 2. Connection Controls
+                if (callState.isConnecting)
+                  const FloatingActionButton.extended(
+                    onPressed: null,
+                    label: Text('Connecting...'),
+                    icon: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                    backgroundColor: Colors.grey,
+                  )
+                else if (callState.isJoined)
+                  FloatingActionButton.extended(
+                    heroTag: 'leave_room',
+                    onPressed: () {
+                      ref.read(callProvider.notifier).leaveRoom();
+                    },
+                    label: Text('Leave Room ${callState.roomId}'),
+                    icon: const Icon(Icons.call_end),
+                    backgroundColor: Colors.red,
+                  )
+                else
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      FloatingActionButton.extended(
+                        heroTag: 'join_alice',
+                        onPressed: () {
+                          ref.read(callProvider.notifier).joinRoom('101', 'Alice');
+                        },
+                        label: const Text('Join as Alice'),
+                        icon: const Icon(Icons.person),
+                        backgroundColor: Colors.green,
+                      ),
+                      const SizedBox(width: 16),
+                      FloatingActionButton.extended(
+                        heroTag: 'join_bob',
+                        onPressed: () {
+                          ref.read(callProvider.notifier).joinRoom('101', 'Bob');
+                        },
+                        label: const Text('Join as Bob'),
+                        icon: const Icon(Icons.person_outline),
+                        backgroundColor: Colors.blueAccent,
+                      ),
+                    ],
                   ),
-                  backgroundColor: Colors.grey,
-                )
-              : callState.isJoined
-                  ? FloatingActionButton.extended(
-                      onPressed: () {
-                        // Leave the room
-                        ref.read(callProvider.notifier).leaveRoom();
-                      },
-                      label: Text('Leave Room ${callState.roomId}'),
-                      icon: const Icon(Icons.call_end),
-                      backgroundColor: Colors.red,
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        FloatingActionButton.extended(
-                          heroTag: 'join_alice',
-                          onPressed: () {
-                            ref.read(callProvider.notifier).joinRoom('101', 'Alice');
-                          },
-                          label: const Text('Join as Alice'),
-                          icon: const Icon(Icons.person),
-                          backgroundColor: Colors.green,
-                        ),
-                        const SizedBox(width: 16),
-                        FloatingActionButton.extended(
-                          heroTag: 'join_bob',
-                          onPressed: () {
-                            ref.read(callProvider.notifier).joinRoom('101', 'Bob');
-                          },
-                          label: const Text('Join as Bob'),
-                          icon: const Icon(Icons.person_outline),
-                          backgroundColor: Colors.blueAccent,
-                        ),
-                      ],
-                    ),
+              ],
+            ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }

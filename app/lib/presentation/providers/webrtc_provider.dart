@@ -92,6 +92,8 @@ class CallNotifier extends Notifier<CallState> {
       isConnecting: false,
       isJoined: false,
       roomId: null,
+      isAudioMuted: state.isAudioMuted,
+      isVideoMuted: state.isVideoMuted,
     );
   }
 
@@ -225,5 +227,36 @@ class CallNotifier extends Notifier<CallState> {
         state = state.copyWith(remoteStream: event.streams[0]);
       }
     };
+  }
+
+  void toggleAudio() {
+    if (state.localStream == null) return;
+    
+    final audioTracks = state.localStream!.getAudioTracks();
+    if (audioTracks.isNotEmpty) {
+      final isMuted = !state.isAudioMuted;
+      audioTracks[0].enabled = !isMuted;
+      state = state.copyWith(isAudioMuted: isMuted);
+    }
+  }
+
+  void toggleVideo() {
+    if (state.localStream == null) return;
+    
+    final videoTracks = state.localStream!.getVideoTracks();
+    if (videoTracks.isNotEmpty) {
+      final isMuted = !state.isVideoMuted;
+      videoTracks[0].enabled = !isMuted;
+      state = state.copyWith(isVideoMuted: isMuted);
+    }
+  }
+
+  Future<void> switchCamera() async {
+    if (state.localStream == null) return;
+    
+    final videoTracks = state.localStream!.getVideoTracks();
+    if (videoTracks.isNotEmpty) {
+      await Helper.switchCamera(videoTracks[0]);
+    }
   }
 }

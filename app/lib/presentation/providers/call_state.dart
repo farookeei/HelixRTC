@@ -10,6 +10,8 @@ class CallState {
   final bool isConnecting;
   final bool isJoined;
   final String? roomId;
+  final bool isAudioMuted;
+  final bool isVideoMuted;
 
   CallState({
     this.localStream,
@@ -18,6 +20,8 @@ class CallState {
     this.isConnecting = false,
     this.isJoined = false,
     this.roomId,
+    this.isAudioMuted = false,
+    this.isVideoMuted = false,
   });
 
   CallState copyWith({
@@ -27,6 +31,8 @@ class CallState {
     bool? isConnecting,
     bool? isJoined,
     String? roomId,
+    bool? isAudioMuted,
+    bool? isVideoMuted,
   }) {
     return CallState(
       localStream: localStream ?? this.localStream,
@@ -35,6 +41,8 @@ class CallState {
       isConnecting: isConnecting ?? this.isConnecting,
       isJoined: isJoined ?? this.isJoined,
       roomId: roomId ?? this.roomId,
+      isAudioMuted: isAudioMuted ?? this.isAudioMuted,
+      isVideoMuted: isVideoMuted ?? this.isVideoMuted,
     );
   }
 }
