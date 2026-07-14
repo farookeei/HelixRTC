@@ -230,6 +230,16 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                       elevation: 0,
                       child: const Icon(Icons.flip_camera_ios, color: Colors.white),
                     ),
+                    if (callState.remoteStream != null) ...[
+                      const SizedBox(width: 16),
+                      FloatingActionButton(
+                        heroTag: 'chat_toggle',
+                        onPressed: () => _showChatSheet(context),
+                        backgroundColor: Colors.purpleAccent,
+                        elevation: 0,
+                        child: const Icon(Icons.chat, color: Colors.white),
+                      ),
+                    ]
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -287,6 +297,130 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
               ],
             ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  void _showChatSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return const _ChatSheet();
+      },
+    );
+  }
+}
+
+class _ChatSheet extends ConsumerStatefulWidget {
+  const _ChatSheet();
+
+  @override
+  ConsumerState<_ChatSheet> createState() => _ChatSheetState();
+}
+
+class _ChatSheetState extends ConsumerState<_ChatSheet> {
+  final TextEditingController _textController = TextEditingController();
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  void _sendMessage() {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+    
+    ref.read(callProvider.notifier).sendChatMessage(text);
+    _textController.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final callState = ref.watch(callProvider);
+    final messages = callState.messages;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.6,
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text(
+              'Chat',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const Divider(color: Colors.white24, height: 1),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: messages.length,
+              itemBuilder: (context, index) {
+                final msg = messages[index];
+                return Align(
+                  alignment: msg.isLocal ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: msg.isLocal ? Colors.blueAccent : Colors.white24,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      msg.text,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(8.0),
+            color: const Color(0xFF121212),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Type a message...',
+                      hintStyle: const TextStyle(color: Colors.white54),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white10,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                    onSubmitted: (_) => _sendMessage(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.send, color: Colors.blueAccent),
+                  onPressed: _sendMessage,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

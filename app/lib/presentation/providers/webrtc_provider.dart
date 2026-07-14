@@ -48,7 +48,9 @@ class CallNotifier extends Notifier<CallState> {
 
       // Listen for incoming messages from the server
       _signalingSubscription?.cancel();
-      _signalingSubscription = signalingRepo.onMessageReceived.listen((message) {
+      _signalingSubscription = signalingRepo.onMessageReceived.listen((
+        message,
+      ) {
         _handleSignalingMessage(message);
       });
 
@@ -75,15 +77,15 @@ class CallNotifier extends Notifier<CallState> {
   void leaveRoom() {
     final signalingRepo = ref.read(signalingRepoProvider);
     signalingRepo.disconnect();
-    
+
     // Stop listening to old messages
     _signalingSubscription?.cancel();
     _signalingSubscription = null;
-    
+
     // Close and dispose of the WebRTC peer connection
     state.peerConnection?.close();
     state.peerConnection?.dispose();
-    
+
     // Reset state, but keep the local camera stream active
     state = CallState(
       localStream: state.localStream,
@@ -99,7 +101,7 @@ class CallNotifier extends Notifier<CallState> {
 
   void _handleSignalingMessage(SignalingMessage message) {
     log('Received message: ${message.type} from ${message.sender}');
-    
+
     switch (message.type) {
       case 'room_full':
         state = state.copyWith(
@@ -125,59 +127,66 @@ class CallNotifier extends Notifier<CallState> {
 
   Future<void> _handlePeerJoined() async {
     await _initializePeerConnection();
-    
+
     if (state.peerConnection == null) return;
-    
+
+    // Create data channel BEFORE creating the offer so it's included in SDP
+    await _setupDataChannel();
+
     // 1. Create the SDP Offer
     final webrtcRepo = ref.read(webRtcRepoProvider);
     final offer = await webrtcRepo.createOffer(state.peerConnection!);
-    
+
     // 2. Send it to the other person via the signaling server
     final signalingRepo = ref.read(signalingRepoProvider);
-    signalingRepo.sendMessage(SignalingMessage(
-      type: 'offer',
-      room: state.roomId,
-      data: jsonEncode(offer.toMap()),
-    ));
+    signalingRepo.sendMessage(
+      SignalingMessage(
+        type: 'offer',
+        room: state.roomId,
+        data: jsonEncode(offer.toMap()),
+      ),
+    );
   }
 
   Future<void> _handleOffer(SignalingMessage message) async {
     if (message.data == null) return;
-    
+
     // If we just joined the room, we might not have initialized the connection yet
     if (state.peerConnection == null) {
       await _initializePeerConnection();
     }
-    
+
     if (state.peerConnection == null) return;
 
     // 1. Parse the incoming Offer SDP
     final data = jsonDecode(message.data!);
     final description = RTCSessionDescription(data['sdp'], data['type']);
-    
+
     // 2. Set it as the Remote Description
     final webrtcRepo = ref.read(webRtcRepoProvider);
     await webrtcRepo.setRemoteDescription(state.peerConnection!, description);
-    
+
     // 3. Create our Answer
     final answer = await webrtcRepo.createAnswer(state.peerConnection!);
-    
+
     // 4. Send the Answer back via signaling
     final signalingRepo = ref.read(signalingRepoProvider);
-    signalingRepo.sendMessage(SignalingMessage(
-      type: 'answer',
-      room: state.roomId,
-      data: jsonEncode(answer.toMap()),
-    ));
+    signalingRepo.sendMessage(
+      SignalingMessage(
+        type: 'answer',
+        room: state.roomId,
+        data: jsonEncode(answer.toMap()),
+      ),
+    );
   }
 
   Future<void> _handleAnswer(SignalingMessage message) async {
     if (message.data == null || state.peerConnection == null) return;
-    
+
     // 1. Parse the incoming Answer SDP
     final data = jsonDecode(message.data!);
     final description = RTCSessionDescription(data['sdp'], data['type']);
-    
+
     // 2. Set it as the Remote Description
     final webrtcRepo = ref.read(webRtcRepoProvider);
     await webrtcRepo.setRemoteDescription(state.peerConnection!, description);
@@ -185,7 +194,7 @@ class CallNotifier extends Notifier<CallState> {
 
   Future<void> _handleIceCandidate(SignalingMessage message) async {
     if (message.data == null || state.peerConnection == null) return;
-    
+
     // 1. Parse the incoming ICE Candidate
     final data = jsonDecode(message.data!);
     final candidate = RTCIceCandidate(
@@ -193,7 +202,7 @@ class CallNotifier extends Notifier<CallState> {
       data['sdpMid'],
       data['sdpMLineIndex'],
     );
-    
+
     // 2. Add it to our WebRTC engine so it can find the other peer
     final webrtcRepo = ref.read(webRtcRepoProvider);
     await webrtcRepo.addIceCandidate(state.peerConnection!, candidate);
@@ -201,44 +210,94 @@ class CallNotifier extends Notifier<CallState> {
 
   Future<void> _initializePeerConnection() async {
     final webrtcRepo = ref.read(webRtcRepoProvider);
-    
+
     // 1. Create the Peer Connection
     final pc = await webrtcRepo.createConnection();
-    
+
     // 2. Add our local camera/mic tracks so the other person can see/hear us
     if (state.localStream != null) {
       for (final track in state.localStream!.getTracks()) {
         await pc.addTrack(track, state.localStream!);
       }
     }
-    
+
     // 3. Save it to state
     state = state.copyWith(peerConnection: pc);
-    
-    // 4. Setup listeners (We will fill these in during later steps)
+
+    // 4. Setup listeners
     pc.onIceCandidate = (candidate) {
       if (state.roomId == null) return;
-      
+
       // When our phone finds a new public IP (ICE Candidate), send it to the other person
       final signalingRepo = ref.read(signalingRepoProvider);
-      signalingRepo.sendMessage(SignalingMessage(
-        type: 'candidate',
-        room: state.roomId!,
-        data: jsonEncode(candidate.toMap()),
-      ));
+      signalingRepo.sendMessage(
+        SignalingMessage(
+          type: 'candidate',
+          room: state.roomId!,
+          data: jsonEncode(candidate.toMap()),
+        ),
+      );
     };
-    
+
     pc.onTrack = (event) {
       log('Received remote track');
       if (event.streams.isNotEmpty) {
         state = state.copyWith(remoteStream: event.streams[0]);
       }
     };
+
+    // When the OTHER person creates the data channel, we receive it here
+    pc.onDataChannel = (channel) {
+      log('Received remote data channel!');
+      _bindDataChannelListeners(channel);
+      state = state.copyWith(dataChannel: channel);
+    };
+  }
+
+  Future<void> _setupDataChannel() async {
+    if (state.peerConnection == null) return;
+
+    final init = RTCDataChannelInit();
+    final channel = await state.peerConnection!.createDataChannel('chat', init);
+
+    _bindDataChannelListeners(channel);
+    state = state.copyWith(dataChannel: channel);
+  }
+
+  void _bindDataChannelListeners(RTCDataChannel channel) {
+    channel.onMessage = (RTCDataChannelMessage data) {
+      if (data.isBinary) return; // We only handle text chat
+
+      final message = ChatMessage(
+        sender: 'Peer',
+        text: data.text,
+        isLocal: false,
+      );
+
+      state = state.copyWith(messages: [...state.messages, message]);
+    };
+
+    channel.onDataChannelState = (RTCDataChannelState channelState) {
+      log('Data Channel State: $channelState');
+    };
+  }
+
+  void sendChatMessage(String text) {
+    if (state.dataChannel == null || text.trim().isEmpty) return;
+
+    final channel = state.dataChannel!;
+    if (channel.state == RTCDataChannelState.RTCDataChannelOpen) {
+      channel.send(RTCDataChannelMessage(text));
+
+      final message = ChatMessage(sender: 'Me', text: text, isLocal: true);
+
+      state = state.copyWith(messages: [...state.messages, message]);
+    }
   }
 
   void toggleAudio() {
     if (state.localStream == null) return;
-    
+
     final audioTracks = state.localStream!.getAudioTracks();
     if (audioTracks.isNotEmpty) {
       final isMuted = !state.isAudioMuted;
@@ -249,7 +308,7 @@ class CallNotifier extends Notifier<CallState> {
 
   void toggleVideo() {
     if (state.localStream == null) return;
-    
+
     final videoTracks = state.localStream!.getVideoTracks();
     if (videoTracks.isNotEmpty) {
       final isMuted = !state.isVideoMuted;
@@ -260,7 +319,7 @@ class CallNotifier extends Notifier<CallState> {
 
   Future<void> switchCamera() async {
     if (state.localStream == null) return;
-    
+
     final videoTracks = state.localStream!.getVideoTracks();
     if (videoTracks.isNotEmpty) {
       await Helper.switchCamera(videoTracks[0]);
