@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../providers/webrtc_provider.dart';
+import '../providers/call_state.dart';
 
 class VideoCallScreen extends ConsumerStatefulWidget {
   const VideoCallScreen({super.key});
@@ -39,6 +40,19 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
   Widget build(BuildContext context) {
     // Watch the call state for updates (like when localStream changes from null to a real stream)
     final callState = ref.watch(callProvider);
+
+    // Listen for room full errors to show a UI alert
+    ref.listen<CallState>(callProvider, (previous, next) {
+      if (next.isRoomFull && (previous == null || !previous.isRoomFull)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Room is full. Only 2 participants allowed.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    });
 
     // If local stream becomes available, assign it to our local renderer
     if (callState.localStream != null && _localRenderer.srcObject == null) {

@@ -13,10 +13,10 @@ import (
 // Message represents the JSON structure for all communication between clients and the server.
 type Message struct {
 	Type   string `json:"type"`             // "join", "offer", "answer", "candidate", "leave"
-	Sender string `json:"sender,omitempty"`  // Unique ID of the client sending the message
-	Target string `json:"target,omitempty"`  // Unique ID of the client this message is meant for (for 1-to-1 routing)
-	Room   string `json:"room,omitempty"`    // Room ID
-	Data   string `json:"data,omitempty"`    // Raw payload (SDP Offer/Answer or ICE Candidate string)
+	Sender string `json:"sender,omitempty"` // Unique ID of the client sending the message
+	Target string `json:"target,omitempty"` // Unique ID of the client this message is meant for (for 1-to-1 routing)
+	Room   string `json:"room,omitempty"`   // Room ID
+	Data   string `json:"data,omitempty"`   // Raw payload (SDP Offer/Answer or ICE Candidate string)
 }
 
 // Client represents a single connected WebSocket client.
@@ -44,8 +44,6 @@ type Hub struct {
 var globalHub = &Hub{
 	Rooms: make(map[string]*Room),
 }
-
-
 
 // upgrader holds configuration for upgrading HTTP connections to WebSockets
 var upgrader = websocket.Upgrader{
@@ -120,9 +118,20 @@ func (c *Client) readPump() {
 			}
 			globalHub.mu.Unlock()
 
+			room.mu.Lock()
+			if len(room.Clients) >= 2 {
+				room.mu.Unlock()
+				log.Printf("Room %s is full, rejecting client %s", msg.Room, c.ID)
+				fullMsg := Message{
+					Type: "room_full",
+					Room: msg.Room,
+				}
+				msgBytes, _ := json.Marshal(fullMsg)
+				c.Send <- msgBytes
+				continue // Skip joining logic
+			}
 			// Assign client to room and add to room's client map safely
 			c.Room = room
-			room.mu.Lock()
 			room.Clients[c] = true
 			room.mu.Unlock()
 
@@ -149,7 +158,7 @@ func (c *Client) readPump() {
 			if c.Room != nil {
 				// Convert the struct back to raw JSON bytes so we can send it
 				msgBytes, _ := json.Marshal(msg)
-				
+
 				// Read-lock the room to loop through clients safely
 				c.Room.mu.RLock()
 				for client := range c.Room.Clients {

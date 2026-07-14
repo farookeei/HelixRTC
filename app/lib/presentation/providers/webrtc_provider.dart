@@ -101,6 +101,13 @@ class CallNotifier extends Notifier<CallState> {
     log('Received message: ${message.type} from ${message.sender}');
     
     switch (message.type) {
+      case 'room_full':
+        state = state.copyWith(
+          isRoomFull: true,
+          isConnecting: false,
+          isJoined: false,
+        );
+        break;
       case 'peer_joined':
         _handlePeerJoined();
         break;
