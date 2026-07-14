@@ -87,6 +87,11 @@ func (c *Client) readPump() {
 			c.Room.mu.Unlock()
 			log.Printf("Client %s left room %s", c.ID, c.Room.ID)
 		}
+
+		// CRITICAL FIX: Close the Send channel!
+		// If we don't do this, the writePump goroutine will wait forever and cause a memory leak.
+		close(c.Send)
+
 		c.Conn.Close()
 	}()
 
@@ -130,6 +135,7 @@ func (c *Client) readPump() {
 				c.Send <- msgBytes
 				continue // Skip joining logic
 			}
+
 			// Assign client to room and add to room's client map safely
 			c.Room = room
 			room.Clients[c] = true
