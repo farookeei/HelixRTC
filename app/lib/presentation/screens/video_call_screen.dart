@@ -328,7 +328,7 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
 
   void _showCreateRoomDialog(BuildContext context) {
     final nameController = TextEditingController();
-    
+
     // Generate a random 5-digit room code
     final randomRoomId = (10000 + Random().nextInt(90000)).toString();
 
@@ -337,20 +337,26 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text('Create a Room', style: TextStyle(color: Colors.white)),
+          title: const Text(
+            'Create a Room',
+            style: TextStyle(color: Colors.white),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Share this code with your friend:', style: TextStyle(color: Colors.white70)),
+              const Text(
+                'Share this code with your friend:',
+                style: TextStyle(color: Colors.white70),
+              ),
               const SizedBox(height: 8),
               Text(
-                randomRoomId, 
+                randomRoomId,
                 style: const TextStyle(
-                  color: Colors.blueAccent, 
-                  fontSize: 32, 
+                  color: Colors.blueAccent,
+                  fontSize: 32,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 4.0,
-                )
+                ),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -359,7 +365,9 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Your Name',
                   labelStyle: TextStyle(color: Colors.white54),
-                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24),
+                  ),
                 ),
               ),
             ],
@@ -367,7 +375,10 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
             ElevatedButton(
               onPressed: () {
@@ -377,8 +388,13 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                   Navigator.pop(context);
                 }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-              child: const Text('Create & Join', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+              ),
+              child: const Text(
+                'Create & Join',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         );
@@ -395,7 +411,10 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text('Join a Room', style: TextStyle(color: Colors.white)),
+          title: const Text(
+            'Join a Room',
+            style: TextStyle(color: Colors.white),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -405,7 +424,9 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Room ID (e.g. 101)',
                   labelStyle: TextStyle(color: Colors.white54),
-                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -415,7 +436,9 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Your Name',
                   labelStyle: TextStyle(color: Colors.white54),
-                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24),
+                  ),
                 ),
               ),
             ],
@@ -423,7 +446,10 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
             ElevatedButton(
               onPressed: () {
@@ -434,7 +460,9 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                   Navigator.pop(context);
                 }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+              ),
               child: const Text('Join', style: TextStyle(color: Colors.white)),
             ),
           ],
@@ -488,93 +516,95 @@ class _ChatSheetState extends ConsumerState<_ChatSheet> {
     final callState = ref.watch(callProvider);
     final messages = callState.messages;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.6,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+    return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text(
-              'Chat',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.5,
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'Chat',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-          ),
-          const Divider(color: Colors.white24, height: 1),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final msg = messages[index];
-                return Align(
-                  alignment: msg.isLocal
-                      ? Alignment.centerRight
-                      : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: msg.isLocal ? Colors.blueAccent : Colors.white24,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      msg.text,
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(8.0),
-            color: const Color(0xFF121212),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _textController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      hintStyle: const TextStyle(color: Colors.white54),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor: Colors.white10,
-                      contentPadding: const EdgeInsets.symmetric(
+            const Divider(color: Colors.white24, height: 1),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: messages.length,
+                itemBuilder: (context, index) {
+                  final msg = messages[index];
+                  return Align(
+                    alignment: msg.isLocal
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 16,
-                        vertical: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: msg.isLocal ? Colors.blueAccent : Colors.white24,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        msg.text,
+                        style: const TextStyle(color: Colors.white),
                       ),
                     ),
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.blueAccent),
-                  onPressed: _sendMessage,
-                ),
-              ],
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+            Container(
+              padding: const EdgeInsets.all(8.0),
+              color: const Color(0xFF121212),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _textController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Type a message...',
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white10,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.send, color: Colors.blueAccent),
+                    onPressed: _sendMessage,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
