@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -79,10 +81,13 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
       backgroundColor: const Color(0xFF121212), // Premium dark mode background
       appBar: AppBar(
         title: Text(
-          callState.isJoined 
-              ? 'Room: ${callState.roomId}' 
+          callState.isJoined
+              ? 'Room: ${callState.roomId}'
               : 'HelixRTC Video Call',
-          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -98,7 +103,8 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                       borderRadius: BorderRadius.circular(16),
                       child: RTCVideoView(
                         _remoteRenderer,
-                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        objectFit:
+                            RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                       ),
                     )
                   : Center(
@@ -121,7 +127,8 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                               ? RTCVideoView(
                                   _localRenderer,
                                   mirror: true,
-                                  objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                                  objectFit: RTCVideoViewObjectFit
+                                      .RTCVideoViewObjectFitCover,
                                 )
                               : const Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -154,7 +161,7 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                       ),
                     ),
             ),
-            
+
             // 2. PIP VIEW (Float local stream in bottom-right corner when remote is active)
             if (callState.remoteStream != null && callState.localStream != null)
               Positioned(
@@ -182,7 +189,8 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                     child: RTCVideoView(
                       _localRenderer,
                       mirror: true,
-                      objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                      objectFit:
+                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                     ),
                   ),
                 ),
@@ -209,26 +217,44 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                   children: [
                     FloatingActionButton(
                       heroTag: 'mic_toggle',
-                      onPressed: () => ref.read(callProvider.notifier).toggleAudio(),
-                      backgroundColor: callState.isAudioMuted ? Colors.red : Colors.white24,
+                      onPressed: () =>
+                          ref.read(callProvider.notifier).toggleAudio(),
+                      backgroundColor: callState.isAudioMuted
+                          ? Colors.red
+                          : Colors.white24,
                       elevation: 0,
-                      child: Icon(callState.isAudioMuted ? Icons.mic_off : Icons.mic, color: Colors.white),
+                      child: Icon(
+                        callState.isAudioMuted ? Icons.mic_off : Icons.mic,
+                        color: Colors.white,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     FloatingActionButton(
                       heroTag: 'video_toggle',
-                      onPressed: () => ref.read(callProvider.notifier).toggleVideo(),
-                      backgroundColor: callState.isVideoMuted ? Colors.red : Colors.white24,
+                      onPressed: () =>
+                          ref.read(callProvider.notifier).toggleVideo(),
+                      backgroundColor: callState.isVideoMuted
+                          ? Colors.red
+                          : Colors.white24,
                       elevation: 0,
-                      child: Icon(callState.isVideoMuted ? Icons.videocam_off : Icons.videocam, color: Colors.white),
+                      child: Icon(
+                        callState.isVideoMuted
+                            ? Icons.videocam_off
+                            : Icons.videocam,
+                        color: Colors.white,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     FloatingActionButton(
                       heroTag: 'camera_switch',
-                      onPressed: () => ref.read(callProvider.notifier).switchCamera(),
+                      onPressed: () =>
+                          ref.read(callProvider.notifier).switchCamera(),
                       backgroundColor: Colors.white24,
                       elevation: 0,
-                      child: const Icon(Icons.flip_camera_ios, color: Colors.white),
+                      child: const Icon(
+                        Icons.flip_camera_ios,
+                        color: Colors.white,
+                      ),
                     ),
                     if (callState.remoteStream != null) ...[
                       const SizedBox(width: 16),
@@ -239,11 +265,11 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                         elevation: 0,
                         child: const Icon(Icons.chat, color: Colors.white),
                       ),
-                    ]
+                    ],
                   ],
                 ),
                 const SizedBox(height: 16),
-                
+
                 // 2. Connection Controls
                 if (callState.isConnecting)
                   const FloatingActionButton.extended(
@@ -274,22 +300,18 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       FloatingActionButton.extended(
-                        heroTag: 'join_alice',
-                        onPressed: () {
-                          ref.read(callProvider.notifier).joinRoom('101', 'Alice');
-                        },
-                        label: const Text('Join as Alice'),
-                        icon: const Icon(Icons.person),
+                        heroTag: 'create_room',
+                        onPressed: () => _showCreateRoomDialog(context),
+                        label: const Text('Create Room'),
+                        icon: const Icon(Icons.add_box),
                         backgroundColor: Colors.green,
                       ),
                       const SizedBox(width: 16),
                       FloatingActionButton.extended(
-                        heroTag: 'join_bob',
-                        onPressed: () {
-                          ref.read(callProvider.notifier).joinRoom('101', 'Bob');
-                        },
-                        label: const Text('Join as Bob'),
-                        icon: const Icon(Icons.person_outline),
+                        heroTag: 'join_room',
+                        onPressed: () => _showJoinRoomDialog(context),
+                        label: const Text('Join Room'),
+                        icon: const Icon(Icons.login),
                         backgroundColor: Colors.blueAccent,
                       ),
                     ],
@@ -297,6 +319,123 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
               ],
             ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  void _showCreateRoomDialog(BuildContext context) {
+    final nameController = TextEditingController();
+    
+    // Generate a random 5-digit room code
+    final randomRoomId = (10000 + Random().nextInt(90000)).toString();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Text('Create a Room', style: TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Share this code with your friend:', style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              Text(
+                randomRoomId, 
+                style: const TextStyle(
+                  color: Colors.blueAccent, 
+                  fontSize: 32, 
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 4.0,
+                )
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: nameController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Your Name',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                if (name.isNotEmpty) {
+                  ref.read(callProvider.notifier).joinRoom(randomRoomId, name);
+                  Navigator.pop(context);
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+              child: const Text('Create & Join', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showJoinRoomDialog(BuildContext context) {
+    final roomIdController = TextEditingController();
+    final nameController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Text('Join a Room', style: TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: roomIdController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Room ID (e.g. 101)',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: nameController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Your Name',
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final room = roomIdController.text.trim();
+                final name = nameController.text.trim();
+                if (room.isNotEmpty && name.isNotEmpty) {
+                  ref.read(callProvider.notifier).joinRoom(room, name);
+                  Navigator.pop(context);
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+              child: const Text('Join', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -331,7 +470,7 @@ class _ChatSheetState extends ConsumerState<_ChatSheet> {
   void _sendMessage() {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
-    
+
     ref.read(callProvider.notifier).sendChatMessage(text);
     _textController.clear();
   }
@@ -371,10 +510,15 @@ class _ChatSheetState extends ConsumerState<_ChatSheet> {
               itemBuilder: (context, index) {
                 final msg = messages[index];
                 return Align(
-                  alignment: msg.isLocal ? Alignment.centerRight : Alignment.centerLeft,
+                  alignment: msg.isLocal
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: msg.isLocal ? Colors.blueAccent : Colors.white24,
                       borderRadius: BorderRadius.circular(16),
@@ -406,7 +550,10 @@ class _ChatSheetState extends ConsumerState<_ChatSheet> {
                       ),
                       filled: true,
                       fillColor: Colors.white10,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                     ),
                     onSubmitted: (_) => _sendMessage(),
                   ),

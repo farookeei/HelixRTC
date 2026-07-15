@@ -44,7 +44,7 @@ class CallNotifier extends Notifier<CallState> {
 
       // Connect to the WebSocket signaling server
       // (Note: ws://10.0.2.2:8080/ws for Android emulator)
-      await signalingRepo.connect('ws://172.17.11.75:8080/ws');
+      await signalingRepo.connect('ws://192.168.0.108:8080/ws');
 
       // Listen for incoming messages from the server
       _signalingSubscription?.cancel();
@@ -252,6 +252,47 @@ class CallNotifier extends Notifier<CallState> {
       _bindDataChannelListeners(channel);
       state = state.copyWith(dataChannel: channel);
     };
+
+    // Listen for when the other person disconnects (e.g., closes app or loses wifi)
+    pc.onConnectionState = (connectionState) {
+      log('WebRTC Connection State: $connectionState');
+      if (connectionState == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          connectionState == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+          connectionState == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        _handlePeerDisconnected();
+      }
+    };
+  }
+
+  void _handlePeerDisconnected() {
+    log('Peer disconnected. Cleaning up remote state...');
+    
+    // Close data channel if open
+    state.dataChannel?.close();
+    
+    // Close peer connection
+    state.peerConnection?.close();
+    state.peerConnection?.dispose();
+    
+    // Reset the state back to 'joined room, waiting for peer', keeping local camera alive
+    // We explicitly pass nulls to copyWith to overwrite the old objects.
+    // Wait, copyWith doesn't overwrite with null if we pass null. 
+    // We need to create a new CallState based on the old one.
+    
+    state = CallState(
+      localStream: state.localStream,
+      isConnecting: state.isConnecting,
+      isJoined: state.isJoined,
+      roomId: state.roomId,
+      isAudioMuted: state.isAudioMuted,
+      isVideoMuted: state.isVideoMuted,
+      isRoomFull: state.isRoomFull,
+      // Resetting the remote-specific states:
+      remoteStream: null,
+      peerConnection: null,
+      dataChannel: null,
+      messages: const [],
+    );
   }
 
   Future<void> _setupDataChannel() async {
