@@ -258,12 +258,16 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                     ),
                     if (callState.remoteStream != null) ...[
                       const SizedBox(width: 16),
-                      FloatingActionButton(
-                        heroTag: 'chat_toggle',
-                        onPressed: () => _showChatSheet(context),
-                        backgroundColor: Colors.purpleAccent,
-                        elevation: 0,
-                        child: const Icon(Icons.chat, color: Colors.white),
+                      Badge(
+                        isLabelVisible: callState.unreadMessageCount > 0,
+                        label: Text('${callState.unreadMessageCount}'),
+                        child: FloatingActionButton(
+                          heroTag: 'chat_toggle',
+                          onPressed: () => _showChatSheet(context),
+                          backgroundColor: Colors.purpleAccent,
+                          elevation: 0,
+                          child: const Icon(Icons.chat, color: Colors.white),
+                        ),
                       ),
                     ],
                   ],
@@ -440,6 +444,8 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
   }
 
   void _showChatSheet(BuildContext context) {
+    ref.read(callProvider.notifier).setChatOpen(true);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -447,7 +453,9 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
       builder: (context) {
         return const _ChatSheet();
       },
-    );
+    ).then((_) {
+      ref.read(callProvider.notifier).setChatOpen(false);
+    });
   }
 }
 

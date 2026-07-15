@@ -301,7 +301,10 @@ class CallNotifier extends Notifier<CallState> {
         isLocal: false,
       );
 
-      state = state.copyWith(messages: [...state.messages, message]);
+      state = state.copyWith(
+        messages: [...state.messages, message],
+        unreadMessageCount: state.isChatOpen ? 0 : state.unreadMessageCount + 1,
+      );
     };
 
     channel.onDataChannelState = (RTCDataChannelState channelState) {
@@ -320,6 +323,14 @@ class CallNotifier extends Notifier<CallState> {
 
       state = state.copyWith(messages: [...state.messages, message]);
     }
+  }
+
+  void setChatOpen(bool isOpen) {
+    state = state.copyWith(isChatOpen: isOpen, unreadMessageCount: 0);
+  }
+
+  void clearUnreadMessages() {
+    state = state.copyWith(unreadMessageCount: 0);
   }
 
   void toggleAudio() {

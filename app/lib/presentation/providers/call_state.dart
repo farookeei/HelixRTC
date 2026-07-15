@@ -27,6 +27,8 @@ class CallState {
   final bool isVideoMuted;
   final bool isRoomFull;
   final List<ChatMessage> messages;
+  final int unreadMessageCount;
+  final bool isChatOpen;
 
   CallState({
     this.localStream,
@@ -40,6 +42,8 @@ class CallState {
     this.isVideoMuted = false,
     this.isRoomFull = false,
     this.messages = const [],
+    this.unreadMessageCount = 0,
+    this.isChatOpen = false,
   });
 
   CallState copyWith({
@@ -54,6 +58,8 @@ class CallState {
     bool? isVideoMuted,
     bool? isRoomFull,
     List<ChatMessage>? messages,
+    int? unreadMessageCount,
+    bool? isChatOpen,
   }) {
     return CallState(
       localStream: localStream ?? this.localStream,
@@ -67,6 +73,8 @@ class CallState {
       isVideoMuted: isVideoMuted ?? this.isVideoMuted,
       isRoomFull: isRoomFull ?? this.isRoomFull,
       messages: messages ?? this.messages,
+      unreadMessageCount: unreadMessageCount ?? this.unreadMessageCount,
+      isChatOpen: isChatOpen ?? this.isChatOpen,
     );
   }
 
@@ -85,6 +93,8 @@ class CallState {
       peerConnection: null,
       dataChannel: null,
       messages: const [],
+      unreadMessageCount: 0,
+      isChatOpen: false,
     );
   }
 }
