@@ -69,4 +69,22 @@ class CallState {
       messages: messages ?? this.messages,
     );
   }
+
+  // Helper method to clear only remote-specific state (since copyWith cannot set values to null)
+  CallState clearRemoteSession() {
+    return CallState(
+      localStream: localStream,
+      isConnecting: isConnecting,
+      isJoined: isJoined,
+      roomId: roomId,
+      isAudioMuted: isAudioMuted,
+      isVideoMuted: isVideoMuted,
+      isRoomFull: isRoomFull,
+      // Force these back to null/empty
+      remoteStream: null,
+      peerConnection: null,
+      dataChannel: null,
+      messages: const [],
+    );
+  }
 }

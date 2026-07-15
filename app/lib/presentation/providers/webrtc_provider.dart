@@ -256,9 +256,12 @@ class CallNotifier extends Notifier<CallState> {
     // Listen for when the other person disconnects (e.g., closes app or loses wifi)
     pc.onConnectionState = (connectionState) {
       log('WebRTC Connection State: $connectionState');
-      if (connectionState == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-          connectionState == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          connectionState == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+      if (connectionState ==
+              RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          connectionState ==
+              RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+          connectionState ==
+              RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         _handlePeerDisconnected();
       }
     };
@@ -266,33 +269,16 @@ class CallNotifier extends Notifier<CallState> {
 
   void _handlePeerDisconnected() {
     log('Peer disconnected. Cleaning up remote state...');
-    
+
     // Close data channel if open
     state.dataChannel?.close();
-    
+
     // Close peer connection
     state.peerConnection?.close();
     state.peerConnection?.dispose();
-    
+
     // Reset the state back to 'joined room, waiting for peer', keeping local camera alive
-    // We explicitly pass nulls to copyWith to overwrite the old objects.
-    // Wait, copyWith doesn't overwrite with null if we pass null. 
-    // We need to create a new CallState based on the old one.
-    
-    state = CallState(
-      localStream: state.localStream,
-      isConnecting: state.isConnecting,
-      isJoined: state.isJoined,
-      roomId: state.roomId,
-      isAudioMuted: state.isAudioMuted,
-      isVideoMuted: state.isVideoMuted,
-      isRoomFull: state.isRoomFull,
-      // Resetting the remote-specific states:
-      remoteStream: null,
-      peerConnection: null,
-      dataChannel: null,
-      messages: const [],
-    );
+    state = state.clearRemoteSession();
   }
 
   Future<void> _setupDataChannel() async {
