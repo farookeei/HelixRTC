@@ -44,7 +44,7 @@ class CallNotifier extends Notifier<CallState> {
 
       // Connect to the WebSocket signaling server
       // (Note: ws://10.0.2.2:8080/ws for Android emulator)
-      await signalingRepo.connect('ws://192.168.0.108:8080/ws');
+      await signalingRepo.connect('ws://172.17.11.75:8080/ws');
 
       // Listen for incoming messages from the server
       _signalingSubscription?.cancel();

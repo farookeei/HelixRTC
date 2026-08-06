@@ -14,41 +14,77 @@ class VideoCallScreen extends ConsumerStatefulWidget {
 }
 
 class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
-  // The RTCVideoRenderer is the actual GPU canvas that displays our raw camera pixels.
+  // The RTCVideoRenderer is the actual GPU canvas that displays raw camera pixels.
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
-  final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
+  final Map<String, RTCVideoRenderer> _remoteRenderers = {};
 
   @override
   void initState() {
     super.initState();
-    _initializeRenderers();
+    _initializeLocalRenderer();
   }
 
-  /// We must initialize the WebRTC renderers in the background when the page mounts
-  Future<void> _initializeRenderers() async {
+  Future<void> _initializeLocalRenderer() async {
     await _localRenderer.initialize();
-    await _remoteRenderer.initialize();
   }
 
   @override
   void dispose() {
-    //  clean up native video renderers to prevent RAM memory leaks!
     _localRenderer.dispose();
-    _remoteRenderer.dispose();
+    for (final renderer in _remoteRenderers.values) {
+      renderer.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _syncRemoteRenderers(Map<String, MediaStream> remoteStreams) async {
+    // 1. Add new streams
+    for (final entry in remoteStreams.entries) {
+      final peerId = entry.key;
+      final stream = entry.value;
+
+      if (!_remoteRenderers.containsKey(peerId)) {
+        final renderer = RTCVideoRenderer();
+        await renderer.initialize();
+        renderer.srcObject = stream;
+        if (mounted) {
+          setState(() {
+            _remoteRenderers[peerId] = renderer;
+          });
+        }
+      } else if (_remoteRenderers[peerId]?.srcObject != stream) {
+        _remoteRenderers[peerId]?.srcObject = stream;
+      }
+    }
+
+    // 2. Remove disconnected streams
+    final removedIds = _remoteRenderers.keys
+        .where((id) => !remoteStreams.containsKey(id))
+        .toList();
+
+    for (final peerId in removedIds) {
+      _remoteRenderers[peerId]?.dispose();
+      if (mounted) {
+        setState(() {
+          _remoteRenderers.remove(peerId);
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Watch the call state for updates (like when localStream changes from null to a real stream)
     final callState = ref.watch(callProvider);
+
+    // Sync remote renderers with remoteStreams map from Riverpod state
+    _syncRemoteRenderers(callState.remoteStreams);
 
     // Listen for room full errors to show a UI alert
     ref.listen<CallState>(callProvider, (previous, next) {
       if (next.isRoomFull && (previous == null || !previous.isRoomFull)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Room is full. Only 2 participants allowed.'),
+            content: Text('Room is full. Only 4 participants allowed.'),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 3),
           ),
@@ -56,29 +92,15 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
       }
     });
 
-    // If local stream becomes available, assign it to our local renderer
+    // Assign local stream to local renderer when ready
     if (callState.localStream != null && _localRenderer.srcObject == null) {
       setState(() {
         _localRenderer.srcObject = callState.localStream;
       });
     }
 
-    // If remote stream becomes available, assign it to our remote renderer
-    if (callState.remoteStream != null && _remoteRenderer.srcObject == null) {
-      setState(() {
-        _remoteRenderer.srcObject = callState.remoteStream;
-      });
-    }
-
-    // Clear remote stream when it's null (e.g. peer left)
-    if (callState.remoteStream == null && _remoteRenderer.srcObject != null) {
-      setState(() {
-        _remoteRenderer.srcObject = null;
-      });
-    }
-
     return Scaffold(
-      backgroundColor: const Color(0xFF121212), // Premium dark mode background
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: Text(
           callState.isJoined
@@ -96,112 +118,16 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // 1. MAIN BACKGROUND VIEW (Remote stream if connected, else a nice dark card)
+            // DYNAMIC VIDEO LAYOUT (1-on-1 PIP or 2x2 Grid)
             Positioned.fill(
-              child: callState.remoteStream != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: RTCVideoView(
-                        _remoteRenderer,
-                        objectFit:
-                            RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                      ),
-                    )
-                  : Center(
-                      child: Container(
-                        margin: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E1E1E),
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.4),
-                              blurRadius: 15,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(24),
-                          child: callState.localStream != null
-                              ? RTCVideoView(
-                                  _localRenderer,
-                                  mirror: true,
-                                  objectFit: RTCVideoViewObjectFit
-                                      .RTCVideoViewObjectFitCover,
-                                )
-                              : const Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.videocam_off_rounded,
-                                      size: 80,
-                                      color: Colors.white30,
-                                    ),
-                                    SizedBox(height: 16),
-                                    Text(
-                                      'Camera is Off',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      'Turn on camera to join or start a call',
-                                      style: TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                        ),
-                      ),
-                    ),
+              child: _buildVideoLayout(callState),
             ),
-
-            // 2. PIP VIEW (Float local stream in bottom-right corner when remote is active)
-            if (callState.remoteStream != null && callState.localStream != null)
-              Positioned(
-                right: 20,
-                bottom: 100, // Float above buttons
-                width: 110,
-                height: 160,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
-                        blurRadius: 10,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: RTCVideoView(
-                      _localRenderer,
-                      mirror: true,
-                      objectFit:
-                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                    ),
-                  ),
-                ),
-              ),
           ],
         ),
       ),
       floatingActionButton: callState.localStream == null
           ? FloatingActionButton.extended(
               onPressed: () {
-                // Tell the Riverpod Notifier to ask for permission and start the camera!
                 ref.read(callProvider.notifier).initializeCamera();
               },
               label: const Text('Turn Camera On'),
@@ -211,7 +137,7 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 1. Media Controls Toolbar
+                // Toolbar
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -256,7 +182,7 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                         color: Colors.white,
                       ),
                     ),
-                    if (callState.remoteStream != null) ...[
+                    if (callState.remoteStreams.isNotEmpty) ...[
                       const SizedBox(width: 16),
                       Badge(
                         isLabelVisible: callState.unreadMessageCount > 0,
@@ -323,6 +249,158 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
               ],
             ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildVideoLayout(CallState callState) {
+    final remoteCount = _remoteRenderers.length;
+
+    // 0 Remote Peers: Show local stream or Camera Off card
+    if (remoteCount == 0) {
+      if (callState.localStream != null) {
+        return _buildVideoTile(_localRenderer, label: 'You', isLocal: true);
+      }
+      return Center(
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.videocam_off_rounded, size: 80, color: Colors.white30),
+              SizedBox(height: 16),
+              Text(
+                'Camera is Off',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Turn on camera to join or start a call',
+                style: TextStyle(color: Colors.white38, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 1 Remote Peer: Full Screen Remote + PIP Local Overlay
+    if (remoteCount == 1) {
+      final peerId = _remoteRenderers.keys.first;
+      final remoteRenderer = _remoteRenderers.values.first;
+
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: _buildVideoTile(remoteRenderer, label: peerId),
+          ),
+          if (callState.localStream != null)
+            Positioned(
+              right: 20,
+              bottom: 100,
+              width: 110,
+              height: 160,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.2),
+                    width: 1.5,
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: RTCVideoView(
+                    _localRenderer,
+                    mirror: true,
+                    objectFit:
+                        RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    // 2+ Remote Peers: 2x2 Grid View for up to 4 participants
+    final tiles = <Widget>[];
+
+    if (callState.localStream != null) {
+      tiles.add(_buildVideoTile(_localRenderer, label: 'You', isLocal: true));
+    }
+
+    for (final entry in _remoteRenderers.entries) {
+      tiles.add(_buildVideoTile(entry.value, label: entry.key));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: GridView.count(
+        crossAxisCount: 2,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 0.85,
+        children: tiles,
+      ),
+    );
+  }
+
+  Widget _buildVideoTile(RTCVideoRenderer renderer,
+      {required String label, bool isLocal = false}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: RTCVideoView(
+                renderer,
+                mirror: isLocal,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+              ),
+            ),
+          ),
+          Positioned(
+            left: 8,
+            bottom: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

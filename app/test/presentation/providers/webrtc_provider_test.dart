@@ -41,7 +41,10 @@ class MockRTCPeerConnection extends Fake implements RTCPeerConnection {
   void Function(RTCTrackEvent event)? onTrack;
 
   @override
-  Future<RTCRtpSender> addTrack(MediaStreamTrack track, [MediaStream? stream]) async {
+  Future<RTCRtpSender> addTrack(
+    MediaStreamTrack track, [
+    MediaStream? stream,
+  ]) async {
     localTracks.add(track);
     return MockRTCRtpSender();
   }
@@ -71,10 +74,10 @@ class MockRTCIceCandidate extends Fake implements RTCIceCandidate {
 
   @override
   Map<String, dynamic> toMap() => {
-        'candidate': candidate,
-        'sdpMid': sdpMid,
-        'sdpMLineIndex': sdpMLineIndex,
-      };
+    'candidate': candidate,
+    'sdpMid': sdpMid,
+    'sdpMLineIndex': sdpMLineIndex,
+  };
 }
 
 class MockWebRTCRepository extends Fake implements WebRTCRepository {
@@ -236,20 +239,17 @@ void main() {
 
       final callState = container.read(callProvider);
 
-      // VERIFY: Peer connection was created and stored in state
-      expect(callState.peerConnection, isNotNull);
+      // VERIFY: Peer connection was created and stored in state for Bob
+      expect(callState.peerConnections['Bob'], isNotNull);
 
       // VERIFY: local stream was added to the peer connection
       expect(mockWebRtcRepo.createdConnection, isNotNull);
-      expect(
-        mockWebRtcRepo.createdConnection!.localTracks,
-        isNotEmpty,
-      );
+      expect(mockWebRtcRepo.createdConnection!.localTracks, isNotEmpty);
     },
   );
 
   test(
-    'CallNotifier creates and sends offer when peer_joined is received',
+    'CallNotifier creates and sends offer to all peers when peer_list is received',
     () async {
       final mockStream = MockMediaStream();
       final mockWebRtcRepo = MockWebRTCRepository(mockStream);
@@ -265,16 +265,20 @@ void main() {
 
       final notifier = container.read(callProvider.notifier);
       await notifier.initializeCamera();
-      await notifier.joinRoom('101', 'Alice');
+      await notifier.joinRoom('101', 'Charlie');
 
-      // Simulate incoming 'peer_joined' message
+      // Simulate incoming 'peer_list' message containing Alice and Bob
       mockSigRepo.simulateIncomingMessage(
-        SignalingMessage(type: 'peer_joined', sender: 'Bob', room: '101'),
+        SignalingMessage(
+          type: 'peer_list',
+          peers: ['Alice', 'Bob'],
+          room: '101',
+        ),
       );
 
       await Future.delayed(const Duration(milliseconds: 10));
 
-      // VERIFY: An offer was sent via signaling
+      // VERIFY: Offers were sent via targeted signaling
       expect(mockSigRepo.lastMessageSent?.type, equals('offer'));
       expect(mockSigRepo.lastMessageSent?.data, contains('mock_offer_sdp'));
     },
@@ -315,121 +319,132 @@ void main() {
       equals('remote_offer_sdp'),
     );
 
-    // VERIFY: An answer was sent back via signaling
+    // VERIFY: An answer was sent back via targeted signaling
     expect(mockSigRepo.lastMessageSent?.type, equals('answer'));
+    expect(mockSigRepo.lastMessageSent?.to, equals('Bob'));
     expect(mockSigRepo.lastMessageSent?.data, contains('mock_answer_sdp'));
   });
 
-  test('CallNotifier sends ICE candidate when local connection generates one', () async {
-    final mockStream = MockMediaStream();
-    final mockWebRtcRepo = MockWebRTCRepository(mockStream);
-    final mockSigRepo = MockSignalingRepository();
+  test(
+    'CallNotifier sends ICE candidate when local connection generates one',
+    () async {
+      final mockStream = MockMediaStream();
+      final mockWebRtcRepo = MockWebRTCRepository(mockStream);
+      final mockSigRepo = MockSignalingRepository();
 
-    final container = ProviderContainer(
-      overrides: [
-        webRtcRepoProvider.overrideWithValue(mockWebRtcRepo),
-        signalingRepoProvider.overrideWithValue(mockSigRepo),
-      ],
-    );
-    addTearDown(container.dispose);
+      final container = ProviderContainer(
+        overrides: [
+          webRtcRepoProvider.overrideWithValue(mockWebRtcRepo),
+          signalingRepoProvider.overrideWithValue(mockSigRepo),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final notifier = container.read(callProvider.notifier);
-    await notifier.initializeCamera();
-    await notifier.joinRoom('101', 'Alice');
+      final notifier = container.read(callProvider.notifier);
+      await notifier.initializeCamera();
+      await notifier.joinRoom('101', 'Alice');
 
-    // Simulate joining to initialize peer connection
-    mockSigRepo.simulateIncomingMessage(SignalingMessage(
-      type: 'peer_joined',
-      sender: 'Bob',
-      room: '101',
-    ));
-    await Future.delayed(const Duration(milliseconds: 10));
+      // Simulate joining to initialize peer connection
+      mockSigRepo.simulateIncomingMessage(
+        SignalingMessage(type: 'peer_joined', sender: 'Bob', room: '101'),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
 
-    // Force the mock connection to trigger its ICE candidate callback
-    final mockCandidate = MockRTCIceCandidate('mock_ip_123', 'video', 0);
-    mockWebRtcRepo.createdConnection!.onIceCandidate?.call(mockCandidate);
+      // Force the mock connection to trigger its ICE candidate callback
+      final mockCandidate = MockRTCIceCandidate('mock_ip_123', 'video', 0);
+      mockWebRtcRepo.createdConnection!.onIceCandidate?.call(mockCandidate);
 
-    await Future.delayed(const Duration(milliseconds: 10));
+      await Future.delayed(const Duration(milliseconds: 10));
 
-    // VERIFY: The candidate was sent via signaling server
-    expect(mockSigRepo.lastMessageSent?.type, equals('candidate'));
-    expect(mockSigRepo.lastMessageSent?.data, contains('mock_ip_123'));
-  });
+      // VERIFY: The candidate was sent via targeted signaling server
+      expect(mockSigRepo.lastMessageSent?.type, equals('candidate'));
+      expect(mockSigRepo.lastMessageSent?.to, equals('Bob'));
+      expect(mockSigRepo.lastMessageSent?.data, contains('mock_ip_123'));
+    },
+  );
 
-  test('CallNotifier handles incoming ICE candidate and adds it to WebRTC', () async {
-    final mockStream = MockMediaStream();
-    final mockWebRtcRepo = MockWebRTCRepository(mockStream);
-    final mockSigRepo = MockSignalingRepository();
+  test(
+    'CallNotifier handles incoming ICE candidate and adds it to WebRTC',
+    () async {
+      final mockStream = MockMediaStream();
+      final mockWebRtcRepo = MockWebRTCRepository(mockStream);
+      final mockSigRepo = MockSignalingRepository();
 
-    final container = ProviderContainer(
-      overrides: [
-        webRtcRepoProvider.overrideWithValue(mockWebRtcRepo),
-        signalingRepoProvider.overrideWithValue(mockSigRepo),
-      ],
-    );
-    addTearDown(container.dispose);
+      final container = ProviderContainer(
+        overrides: [
+          webRtcRepoProvider.overrideWithValue(mockWebRtcRepo),
+          signalingRepoProvider.overrideWithValue(mockSigRepo),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final notifier = container.read(callProvider.notifier);
-    await notifier.initializeCamera();
-    await notifier.joinRoom('101', 'Alice');
+      final notifier = container.read(callProvider.notifier);
+      await notifier.initializeCamera();
+      await notifier.joinRoom('101', 'Alice');
 
-    // Simulate joining so connection exists
-    mockSigRepo.simulateIncomingMessage(SignalingMessage(
-      type: 'peer_joined',
-      sender: 'Bob',
-      room: '101',
-    ));
-    await Future.delayed(const Duration(milliseconds: 10));
+      // Simulate joining so connection exists
+      mockSigRepo.simulateIncomingMessage(
+        SignalingMessage(type: 'peer_joined', sender: 'Bob', room: '101'),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
 
-    // Simulate incoming 'candidate' message from Bob
-    mockSigRepo.simulateIncomingMessage(SignalingMessage(
-      type: 'candidate',
-      sender: 'Bob',
-      room: '101',
-      data: '{"candidate":"remote_ip_999","sdpMid":"audio","sdpMLineIndex":1}',
-    ));
+      // Simulate incoming 'candidate' message from Bob
+      mockSigRepo.simulateIncomingMessage(
+        SignalingMessage(
+          type: 'candidate',
+          sender: 'Bob',
+          room: '101',
+          data:
+              '{"candidate":"remote_ip_999","sdpMid":"audio","sdpMLineIndex":1}',
+        ),
+      );
 
-    await Future.delayed(const Duration(milliseconds: 10));
+      await Future.delayed(const Duration(milliseconds: 10));
 
-    // VERIFY: The candidate was extracted and added to WebRTC repository
-    expect(mockWebRtcRepo.addedCandidates, isNotEmpty);
-    expect(mockWebRtcRepo.addedCandidates.first.candidate, equals('remote_ip_999'));
-  });
+      // VERIFY: The candidate was extracted and added to WebRTC repository
+      expect(mockWebRtcRepo.addedCandidates, isNotEmpty);
+      expect(
+        mockWebRtcRepo.addedCandidates.first.candidate,
+        equals('remote_ip_999'),
+      );
+    },
+  );
 
-  test('CallNotifier updates state with remote stream when peerConnection fires onTrack', () async {
-    final mockStream = MockMediaStream();
-    final mockWebRtcRepo = MockWebRTCRepository(mockStream);
-    final mockSigRepo = MockSignalingRepository();
+  test(
+    'CallNotifier updates state with remote stream when peerConnection fires onTrack',
+    () async {
+      final mockStream = MockMediaStream();
+      final mockWebRtcRepo = MockWebRTCRepository(mockStream);
+      final mockSigRepo = MockSignalingRepository();
 
-    final container = ProviderContainer(
-      overrides: [
-        webRtcRepoProvider.overrideWithValue(mockWebRtcRepo),
-        signalingRepoProvider.overrideWithValue(mockSigRepo),
-      ],
-    );
-    addTearDown(container.dispose);
+      final container = ProviderContainer(
+        overrides: [
+          webRtcRepoProvider.overrideWithValue(mockWebRtcRepo),
+          signalingRepoProvider.overrideWithValue(mockSigRepo),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final notifier = container.read(callProvider.notifier);
-    await notifier.initializeCamera();
-    await notifier.joinRoom('101', 'Alice');
+      final notifier = container.read(callProvider.notifier);
+      await notifier.initializeCamera();
+      await notifier.joinRoom('101', 'Alice');
 
-    // Simulate joining so connection exists
-    mockSigRepo.simulateIncomingMessage(SignalingMessage(
-      type: 'peer_joined',
-      sender: 'Bob',
-      room: '101',
-    ));
-    await Future.delayed(const Duration(milliseconds: 10));
+      // Simulate joining so connection exists
+      mockSigRepo.simulateIncomingMessage(
+        SignalingMessage(type: 'peer_joined', sender: 'Bob', room: '101'),
+      );
+      await Future.delayed(const Duration(milliseconds: 10));
 
-    final mockRemoteStream = MockMediaStream();
-    // Simulate remote peer connection adding a stream
-    final mockTrackEvent = MockRTCTrackEvent([mockRemoteStream]);
-    mockWebRtcRepo.createdConnection!.onTrack?.call(mockTrackEvent);
+      final mockRemoteStream = MockMediaStream();
+      // Simulate remote peer connection adding a stream
+      final mockTrackEvent = MockRTCTrackEvent([mockRemoteStream]);
+      mockWebRtcRepo.createdConnection!.onTrack?.call(mockTrackEvent);
 
-    await Future.delayed(const Duration(milliseconds: 10));
+      await Future.delayed(const Duration(milliseconds: 10));
 
-    // VERIFY: remote stream is saved to state
-    final callState = container.read(callProvider);
-    expect(callState.remoteStream, equals(mockRemoteStream));
-  });
+      // VERIFY: remote stream is saved to state map under 'Bob'
+      final callState = container.read(callProvider);
+      expect(callState.remoteStreams['Bob'], equals(mockRemoteStream));
+    },
+  );
 }
