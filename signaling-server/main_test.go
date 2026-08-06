@@ -32,40 +32,80 @@ func TestWebSocketRouting(t *testing.T) {
 	}
 	defer wsB.Close()
 
-	// 4. Both clients join "room1"
+	// 4. Client A (Alice) joins
 	joinMsgA := Message{Type: "join", Sender: "Alice", Room: "room1"}
 	wsA.WriteJSON(joinMsgA)
+	time.Sleep(50 * time.Millisecond)
 
+	// Alice gets peer_list (empty)
+	var msgA Message
+	wsA.ReadJSON(&msgA) // peer_list
+
+	// 5. Client B (Bob) joins
 	joinMsgB := Message{Type: "join", Sender: "Bob", Room: "room1"}
 	wsB.WriteJSON(joinMsgB)
+	time.Sleep(50 * time.Millisecond)
 
-	// Wait briefly to ensure both are registered in the global hub before sending messages
-	time.Sleep(100 * time.Millisecond)
+	// Bob receives peer_list (should contain Alice)
+	var msgB Message
+	wsB.SetReadDeadline(time.Now().Add(1 * time.Second))
+	wsB.ReadJSON(&msgB) // peer_list
+	if msgB.Type != "peer_list" || len(msgB.Peers) != 1 || msgB.Peers[0] != "Alice" {
+		t.Errorf("Expected Bob to get peer_list with Alice, got: %v", msgB)
+	}
 
-	// 5. Alice sends an offer to the room
-	offerMsg := Message{Type: "offer", Sender: "Alice", Room: "room1", Data: "SDP_OFFER"}
+	// Alice receives peer_joined from Bob
+	wsA.SetReadDeadline(time.Now().Add(1 * time.Second))
+	wsA.ReadJSON(&msgA) // peer_joined
+	if msgA.Type != "peer_joined" || msgA.Sender != "Bob" {
+		t.Errorf("Expected Alice to get peer_joined from Bob, got: %v", msgA)
+	}
+
+	// 6. Connect Client C (Charlie) and D (Dave)
+	wsC, _, _ := websocket.DefaultDialer.Dial(wsURL, nil)
+	defer wsC.Close()
+	wsD, _, _ := websocket.DefaultDialer.Dial(wsURL, nil)
+	defer wsD.Close()
+
+	wsC.WriteJSON(Message{Type: "join", Sender: "Charlie", Room: "room1"})
+	time.Sleep(50 * time.Millisecond)
+	wsD.WriteJSON(Message{Type: "join", Sender: "Dave", Room: "room1"})
+	time.Sleep(50 * time.Millisecond)
+
+	// 7. Connect Client E (Eve) - should be rejected (Room full)
+	wsE, _, _ := websocket.DefaultDialer.Dial(wsURL, nil)
+	defer wsE.Close()
+	wsE.WriteJSON(Message{Type: "join", Sender: "Eve", Room: "room1"})
+	
+	var msgE Message
+	wsE.SetReadDeadline(time.Now().Add(1 * time.Second))
+	wsE.ReadJSON(&msgE)
+	if msgE.Type != "room_full" {
+		t.Errorf("Expected Eve to be rejected with room_full, got %s", msgE.Type)
+	}
+
+	// 8. Test targeted routing: Alice sends an offer targeting ONLY Charlie
+	offerMsg := Message{Type: "offer", Sender: "Alice", To: "Charlie", Room: "room1", Data: "SDP_OFFER"}
 	err = wsA.WriteJSON(offerMsg)
 	if err != nil {
 		t.Fatalf("Failed to write offer: %v", err)
 	}
 
-	// 6. Bob should receive the offer
-	var receivedMsg Message
-	// We set a deadline so the test doesn't hang forever if it fails
-	wsB.SetReadDeadline(time.Now().Add(2 * time.Second))
-	err = wsB.ReadJSON(&receivedMsg)
-	if err != nil {
-		t.Fatalf("Bob failed to read message: %v", err)
-	}
+	time.Sleep(50 * time.Millisecond)
 
-	// 7. Verify the message is correct
-	if receivedMsg.Type != "offer" {
-		t.Errorf("Expected message type 'offer', got '%s'", receivedMsg.Type)
+	// Drain peer_list / peer_joined for Charlie to get to the offer
+	var msgC Message
+	wsC.SetReadDeadline(time.Now().Add(1 * time.Second))
+	wsC.ReadJSON(&msgC) // peer_list
+	wsC.ReadJSON(&msgC) // peer_joined from Dave
+
+	// Charlie should receive the offer
+	wsC.SetReadDeadline(time.Now().Add(1 * time.Second))
+	err = wsC.ReadJSON(&msgC)
+	if err != nil {
+		t.Fatalf("Charlie failed to read message: %v", err)
 	}
-	if receivedMsg.Sender != "Alice" {
-		t.Errorf("Expected sender 'Alice', got '%s'", receivedMsg.Sender)
-	}
-	if receivedMsg.Data != "SDP_OFFER" {
-		t.Errorf("Expected data 'SDP_OFFER', got '%s'", receivedMsg.Data)
+	if msgC.Type != "offer" || msgC.Sender != "Alice" || msgC.Data != "SDP_OFFER" {
+		t.Errorf("Expected Charlie to receive Alice's offer, got: %v", msgC)
 	}
 }

@@ -1,5 +1,6 @@
 # Ignore the local tracking plan
 PROJECT_PLAN.md
+GO_CONCEPTS.md
 
 # Ignore OS files at root
 .DS_Store

@@ -12,11 +12,12 @@ import (
 
 // Message represents the JSON structure for all communication between clients and the server.
 type Message struct {
-	Type   string `json:"type"`             // "join", "offer", "answer", "candidate", "leave"
-	Sender string `json:"sender,omitempty"` // Unique ID of the client sending the message
-	Target string `json:"target,omitempty"` // Unique ID of the client this message is meant for (for 1-to-1 routing)
-	Room   string `json:"room,omitempty"`   // Room ID
-	Data   string `json:"data,omitempty"`   // Raw payload (SDP Offer/Answer or ICE Candidate string)
+	Type   string   `json:"type"`             // "join", "offer", "answer", "candidate", "leave"
+	Sender string   `json:"sender,omitempty"` // Unique ID of the client sending the message
+	To     string   `json:"to,omitempty"`     // Unique ID of the client this message is meant for (for targeted routing)
+	Room   string   `json:"room,omitempty"`   // Room ID
+	Data   string   `json:"data,omitempty"`   // Raw payload (SDP Offer/Answer or ICE Candidate string)
+	Peers  []string `json:"peers,omitempty"`  // List of active peers in the room
 }
 
 // Client represents a single connected WebSocket client.
@@ -124,7 +125,7 @@ func (c *Client) readPump() {
 			globalHub.mu.Unlock()
 
 			room.mu.Lock()
-			if len(room.Clients) >= 2 {
+			if len(room.Clients) >= 4 {
 				room.mu.Unlock()
 				log.Printf("Room %s is full, rejecting client %s", msg.Room, c.ID)
 				fullMsg := Message{
@@ -143,33 +144,50 @@ func (c *Client) readPump() {
 
 			log.Printf("Client %s joined room %s", c.ID, msg.Room)
 
-			// Notify others in the room that this peer joined!
+			// 1. Gather all EXISTING peers and send to the new client
+			room.mu.RLock()
+			var existingPeers []string
+			for client := range room.Clients {
+				if client != c && client.ID != "" {
+					existingPeers = append(existingPeers, client.ID)
+				}
+			}
+			room.mu.RUnlock()
+
+			peerListMsg := Message{
+				Type:  "peer_list",
+				Room:  msg.Room,
+				Peers: existingPeers,
+			}
+			peerListBytes, _ := json.Marshal(peerListMsg)
+			c.Send <- peerListBytes
+
+			// 2. Notify others in the room that this peer joined!
 			joinedMsg := Message{
 				Type:   "peer_joined",
 				Sender: c.ID,
 				Room:   msg.Room,
 			}
-			msgBytes, _ := json.Marshal(joinedMsg)
+			joinedBytes, _ := json.Marshal(joinedMsg)
 
 			room.mu.RLock()
 			for client := range room.Clients {
 				if client != c {
-					client.Send <- msgBytes // Tell them to start their peer connection
+					client.Send <- joinedBytes // Tell them to start their peer connection
 				}
 			}
 			room.mu.RUnlock()
 
 		case "offer", "answer", "candidate":
-			// We need to route this message to everyone else in the room
-			if c.Room != nil {
-				// Convert the struct back to raw JSON bytes so we can send it
+			// We need to route this message to a specific peer in the room
+			if c.Room != nil && msg.To != "" {
 				msgBytes, _ := json.Marshal(msg)
 
-				// Read-lock the room to loop through clients safely
 				c.Room.mu.RLock()
 				for client := range c.Room.Clients {
-					if client != c { // Don't echo it back to the person who sent it
-						client.Send <- msgBytes // Drop it into their outbox!
+					if client.ID == msg.To {
+						client.Send <- msgBytes // Send to the specific target
+						break // Found the target, no need to keep looping
 					}
 				}
 				c.Room.mu.RUnlock()
