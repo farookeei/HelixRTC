@@ -82,15 +82,20 @@ class CallNotifier extends Notifier<CallState> {
     _signalingSubscription?.cancel();
     _signalingSubscription = null;
 
-    // Close and dispose of the WebRTC peer connection
-    state.peerConnection?.close();
-    state.peerConnection?.dispose();
+    // Close and dispose of all WebRTC peer connections
+    for (final pc in state.peerConnections.values) {
+      pc.close();
+      pc.dispose();
+    }
+    
+    // Close all data channels
+    for (final dc in state.dataChannels.values) {
+      dc.close();
+    }
 
     // Reset state, but keep the local camera stream active
     state = CallState(
       localStream: state.localStream,
-      remoteStream: null,
-      peerConnection: null,
       isConnecting: false,
       isJoined: false,
       roomId: null,
@@ -110,8 +115,11 @@ class CallNotifier extends Notifier<CallState> {
           isJoined: false,
         );
         break;
+      case 'peer_list':
+        _handlePeerList(message);
+        break;
       case 'peer_joined':
-        _handlePeerJoined();
+        _handlePeerJoined(message);
         break;
       case 'offer':
         _handleOffer(message);
@@ -125,38 +133,54 @@ class CallNotifier extends Notifier<CallState> {
     }
   }
 
-  Future<void> _handlePeerJoined() async {
-    await _initializePeerConnection();
+  Future<void> _handlePeerList(SignalingMessage message) async {
+    final peers = message.peers ?? [];
+    
+    // For every peer already in the room, we (the new joiner) create a connection and send an offer
+    for (final peerId in peers) {
+      await _initializePeerConnection(peerId);
+      await _setupDataChannel(peerId);
 
-    if (state.peerConnection == null) return;
+      final pc = state.peerConnections[peerId];
+      if (pc == null) continue;
 
-    // Create data channel BEFORE creating the offer so it's included in SDP
-    await _setupDataChannel();
+      // 1. Create the SDP Offer
+      final webrtcRepo = ref.read(webRtcRepoProvider);
+      final offer = await webrtcRepo.createOffer(pc);
 
-    // 1. Create the SDP Offer
-    final webrtcRepo = ref.read(webRtcRepoProvider);
-    final offer = await webrtcRepo.createOffer(state.peerConnection!);
+      // 2. Send it ONLY to this specific peer via targeted routing
+      final signalingRepo = ref.read(signalingRepoProvider);
+      signalingRepo.sendMessage(
+        SignalingMessage(
+          type: 'offer',
+          room: state.roomId,
+          to: peerId, 
+          data: jsonEncode(offer.toMap()),
+        ),
+      );
+    }
+  }
 
-    // 2. Send it to the other person via the signaling server
-    final signalingRepo = ref.read(signalingRepoProvider);
-    signalingRepo.sendMessage(
-      SignalingMessage(
-        type: 'offer',
-        room: state.roomId,
-        data: jsonEncode(offer.toMap()),
-      ),
-    );
+  Future<void> _handlePeerJoined(SignalingMessage message) async {
+    final peerId = message.sender;
+    if (peerId == null) return;
+
+    // We are an existing peer. A new person joined! 
+    // We create a connection for them, but WE DO NOT send an offer. We wait for theirs.
+    await _initializePeerConnection(peerId);
   }
 
   Future<void> _handleOffer(SignalingMessage message) async {
-    if (message.data == null) return;
+    final peerId = message.sender;
+    if (message.data == null || peerId == null) return;
 
-    // If we just joined the room, we might not have initialized the connection yet
-    if (state.peerConnection == null) {
-      await _initializePeerConnection();
+    // Ensure connection exists
+    if (!state.peerConnections.containsKey(peerId)) {
+      await _initializePeerConnection(peerId);
     }
 
-    if (state.peerConnection == null) return;
+    final pc = state.peerConnections[peerId];
+    if (pc == null) return;
 
     // 1. Parse the incoming Offer SDP
     final data = jsonDecode(message.data!);
@@ -164,24 +188,29 @@ class CallNotifier extends Notifier<CallState> {
 
     // 2. Set it as the Remote Description
     final webrtcRepo = ref.read(webRtcRepoProvider);
-    await webrtcRepo.setRemoteDescription(state.peerConnection!, description);
+    await webrtcRepo.setRemoteDescription(pc, description);
 
     // 3. Create our Answer
-    final answer = await webrtcRepo.createAnswer(state.peerConnection!);
+    final answer = await webrtcRepo.createAnswer(pc);
 
-    // 4. Send the Answer back via signaling
+    // 4. Send the Answer back via targeted signaling
     final signalingRepo = ref.read(signalingRepoProvider);
     signalingRepo.sendMessage(
       SignalingMessage(
         type: 'answer',
         room: state.roomId,
+        to: peerId,
         data: jsonEncode(answer.toMap()),
       ),
     );
   }
 
   Future<void> _handleAnswer(SignalingMessage message) async {
-    if (message.data == null || state.peerConnection == null) return;
+    final peerId = message.sender;
+    if (message.data == null || peerId == null) return;
+
+    final pc = state.peerConnections[peerId];
+    if (pc == null) return;
 
     // 1. Parse the incoming Answer SDP
     final data = jsonDecode(message.data!);
@@ -189,11 +218,15 @@ class CallNotifier extends Notifier<CallState> {
 
     // 2. Set it as the Remote Description
     final webrtcRepo = ref.read(webRtcRepoProvider);
-    await webrtcRepo.setRemoteDescription(state.peerConnection!, description);
+    await webrtcRepo.setRemoteDescription(pc, description);
   }
 
   Future<void> _handleIceCandidate(SignalingMessage message) async {
-    if (message.data == null || state.peerConnection == null) return;
+    final peerId = message.sender;
+    if (message.data == null || peerId == null) return;
+
+    final pc = state.peerConnections[peerId];
+    if (pc == null) return;
 
     // 1. Parse the incoming ICE Candidate
     final data = jsonDecode(message.data!);
@@ -203,12 +236,12 @@ class CallNotifier extends Notifier<CallState> {
       data['sdpMLineIndex'],
     );
 
-    // 2. Add it to our WebRTC engine so it can find the other peer
+    // 2. Add it to our WebRTC engine
     final webrtcRepo = ref.read(webRtcRepoProvider);
-    await webrtcRepo.addIceCandidate(state.peerConnection!, candidate);
+    await webrtcRepo.addIceCandidate(pc, candidate);
   }
 
-  Future<void> _initializePeerConnection() async {
+  Future<void> _initializePeerConnection(String peerId) async {
     final webrtcRepo = ref.read(webRtcRepoProvider);
 
     // 1. Create the Peer Connection
@@ -221,82 +254,93 @@ class CallNotifier extends Notifier<CallState> {
       }
     }
 
-    // 3. Save it to state
-    state = state.copyWith(peerConnection: pc);
+    // 3. Save it to our state map
+    final newConns = Map<String, RTCPeerConnection>.from(state.peerConnections);
+    newConns[peerId] = pc;
+    state = state.copyWith(peerConnections: newConns);
 
     // 4. Setup listeners
     pc.onIceCandidate = (candidate) {
       if (state.roomId == null) return;
 
-      // When our phone finds a new public IP (ICE Candidate), send it to the other person
       final signalingRepo = ref.read(signalingRepoProvider);
       signalingRepo.sendMessage(
         SignalingMessage(
           type: 'candidate',
           room: state.roomId!,
+          to: peerId, // Targeted ICE routing
           data: jsonEncode(candidate.toMap()),
         ),
       );
     };
 
     pc.onTrack = (event) {
-      log('Received remote track');
+      log('Received remote track from $peerId');
       if (event.streams.isNotEmpty) {
-        state = state.copyWith(remoteStream: event.streams[0]);
+        final newStreams = Map<String, MediaStream>.from(state.remoteStreams);
+        newStreams[peerId] = event.streams[0];
+        state = state.copyWith(remoteStreams: newStreams);
       }
     };
 
-    // When the OTHER person creates the data channel, we receive it here
     pc.onDataChannel = (channel) {
-      log('Received remote data channel!');
-      _bindDataChannelListeners(channel);
-      state = state.copyWith(dataChannel: channel);
+      log('Received remote data channel from $peerId');
+      _bindDataChannelListeners(channel, peerId);
+      final newChannels = Map<String, RTCDataChannel>.from(state.dataChannels);
+      newChannels[peerId] = channel;
+      state = state.copyWith(dataChannels: newChannels);
     };
 
-    // Listen for when the other person disconnects (e.g., closes app or loses wifi)
     pc.onConnectionState = (connectionState) {
-      log('WebRTC Connection State: $connectionState');
-      if (connectionState ==
-              RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-          connectionState ==
-              RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          connectionState ==
-              RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
-        _handlePeerDisconnected();
+      log('WebRTC Connection State for $peerId: $connectionState');
+      if (connectionState == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          connectionState == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+          connectionState == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        _handlePeerDisconnected(peerId);
       }
     };
   }
 
-  void _handlePeerDisconnected() {
-    log('Peer disconnected. Cleaning up remote state...');
+  void _handlePeerDisconnected(String peerId) {
+    log('Peer $peerId disconnected. Cleaning up their state...');
 
-    // Close data channel if open
-    state.dataChannel?.close();
+    // Close data channel and peer connection
+    state.dataChannels[peerId]?.close();
+    state.peerConnections[peerId]?.close();
+    state.peerConnections[peerId]?.dispose();
 
-    // Close peer connection
-    state.peerConnection?.close();
-    state.peerConnection?.dispose();
+    // Remove them from maps
+    final newConns = Map<String, RTCPeerConnection>.from(state.peerConnections)..remove(peerId);
+    final newStreams = Map<String, MediaStream>.from(state.remoteStreams)..remove(peerId);
+    final newChannels = Map<String, RTCDataChannel>.from(state.dataChannels)..remove(peerId);
 
-    // Reset the state back to 'joined room, waiting for peer', keeping local camera alive
-    state = state.clearRemoteSession();
+    state = state.copyWith(
+      peerConnections: newConns,
+      remoteStreams: newStreams,
+      dataChannels: newChannels,
+    );
   }
 
-  Future<void> _setupDataChannel() async {
-    if (state.peerConnection == null) return;
+  Future<void> _setupDataChannel(String peerId) async {
+    final pc = state.peerConnections[peerId];
+    if (pc == null) return;
 
     final init = RTCDataChannelInit();
-    final channel = await state.peerConnection!.createDataChannel('chat', init);
+    final channel = await pc.createDataChannel('chat', init);
 
-    _bindDataChannelListeners(channel);
-    state = state.copyWith(dataChannel: channel);
+    _bindDataChannelListeners(channel, peerId);
+    
+    final newChannels = Map<String, RTCDataChannel>.from(state.dataChannels);
+    newChannels[peerId] = channel;
+    state = state.copyWith(dataChannels: newChannels);
   }
 
-  void _bindDataChannelListeners(RTCDataChannel channel) {
+  void _bindDataChannelListeners(RTCDataChannel channel, String peerId) {
     channel.onMessage = (RTCDataChannelMessage data) {
       if (data.isBinary) return; // We only handle text chat
 
       final message = ChatMessage(
-        sender: 'Peer',
+        sender: peerId, // Display their ID in the chat UI
         text: data.text,
         isLocal: false,
       );
@@ -308,19 +352,25 @@ class CallNotifier extends Notifier<CallState> {
     };
 
     channel.onDataChannelState = (RTCDataChannelState channelState) {
-      log('Data Channel State: $channelState');
+      log('Data Channel State with $peerId: $channelState');
     };
   }
 
   void sendChatMessage(String text) {
-    if (state.dataChannel == null || text.trim().isEmpty) return;
+    if (text.trim().isEmpty) return;
 
-    final channel = state.dataChannel!;
-    if (channel.state == RTCDataChannelState.RTCDataChannelOpen) {
-      channel.send(RTCDataChannelMessage(text));
+    bool messageSent = false;
+    
+    // Broadcast the text message to EVERY peer in the room
+    for (final channel in state.dataChannels.values) {
+      if (channel.state == RTCDataChannelState.RTCDataChannelOpen) {
+        channel.send(RTCDataChannelMessage(text));
+        messageSent = true;
+      }
+    }
 
+    if (messageSent) {
       final message = ChatMessage(sender: 'Me', text: text, isLocal: true);
-
       state = state.copyWith(messages: [...state.messages, message]);
     }
   }
