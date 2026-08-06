@@ -17,9 +17,9 @@ class ChatMessage {
 
 class CallState {
   final MediaStream? localStream;
-  final MediaStream? remoteStream;
-  final RTCPeerConnection? peerConnection;
-  final RTCDataChannel? dataChannel;
+  final Map<String, MediaStream> remoteStreams;
+  final Map<String, RTCPeerConnection> peerConnections;
+  final Map<String, RTCDataChannel> dataChannels;
   final bool isConnecting;
   final bool isJoined;
   final String? roomId;
@@ -32,9 +32,9 @@ class CallState {
 
   CallState({
     this.localStream,
-    this.remoteStream,
-    this.peerConnection,
-    this.dataChannel,
+    this.remoteStreams = const {},
+    this.peerConnections = const {},
+    this.dataChannels = const {},
     this.isConnecting = false,
     this.isJoined = false,
     this.roomId,
@@ -48,9 +48,9 @@ class CallState {
 
   CallState copyWith({
     MediaStream? localStream,
-    MediaStream? remoteStream,
-    RTCPeerConnection? peerConnection,
-    RTCDataChannel? dataChannel,
+    Map<String, MediaStream>? remoteStreams,
+    Map<String, RTCPeerConnection>? peerConnections,
+    Map<String, RTCDataChannel>? dataChannels,
     bool? isConnecting,
     bool? isJoined,
     String? roomId,
@@ -63,9 +63,9 @@ class CallState {
   }) {
     return CallState(
       localStream: localStream ?? this.localStream,
-      remoteStream: remoteStream ?? this.remoteStream,
-      peerConnection: peerConnection ?? this.peerConnection,
-      dataChannel: dataChannel ?? this.dataChannel,
+      remoteStreams: remoteStreams ?? this.remoteStreams,
+      peerConnections: peerConnections ?? this.peerConnections,
+      dataChannels: dataChannels ?? this.dataChannels,
       isConnecting: isConnecting ?? this.isConnecting,
       isJoined: isJoined ?? this.isJoined,
       roomId: roomId ?? this.roomId,
@@ -88,10 +88,10 @@ class CallState {
       isAudioMuted: isAudioMuted,
       isVideoMuted: isVideoMuted,
       isRoomFull: isRoomFull,
-      // Force these back to null/empty
-      remoteStream: null,
-      peerConnection: null,
-      dataChannel: null,
+      // Force these back to empty
+      remoteStreams: const {},
+      peerConnections: const {},
+      dataChannels: const {},
       messages: const [],
       unreadMessageCount: 0,
       isChatOpen: false,

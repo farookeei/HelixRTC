@@ -1,16 +1,18 @@
 class SignalingMessage {
   final String type;
   final String? sender;
-  final String? target;
+  final String? to;
   final String? room;
   final String? data;
+  final List<String>? peers;
 
   SignalingMessage({
     required this.type,
     this.sender,
-    this.target,
+    this.to,
     this.room,
     this.data,
+    this.peers,
   });
 
   /// Automatically convert incoming JSON string maps into Dart Objects
@@ -18,9 +20,10 @@ class SignalingMessage {
     return SignalingMessage(
       type: json['type'] as String,
       sender: json['sender'] as String?,
-      target: json['target'] as String?,
+      to: json['to'] as String?,
       room: json['room'] as String?,
       data: json['data'] as String?,
+      peers: (json['peers'] as List<dynamic>?)?.map((e) => e as String).toList(),
     );
   }
 
@@ -29,9 +32,10 @@ class SignalingMessage {
     return {
       'type': type,
       if (sender != null) 'sender': sender,
-      if (target != null) 'target': target,
+      if (to != null) 'to': to,
       if (room != null) 'room': room,
       if (data != null) 'data': data,
+      if (peers != null) 'peers': peers,
     };
   }
 }
