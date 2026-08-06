@@ -87,7 +87,7 @@ class CallNotifier extends Notifier<CallState> {
       pc.close();
       pc.dispose();
     }
-    
+
     // Close all data channels
     for (final dc in state.dataChannels.values) {
       dc.close();
@@ -135,7 +135,7 @@ class CallNotifier extends Notifier<CallState> {
 
   Future<void> _handlePeerList(SignalingMessage message) async {
     final peers = message.peers ?? [];
-    
+
     // For every peer already in the room, we (the new joiner) create a connection and send an offer
     for (final peerId in peers) {
       await _initializePeerConnection(peerId);
@@ -154,7 +154,7 @@ class CallNotifier extends Notifier<CallState> {
         SignalingMessage(
           type: 'offer',
           room: state.roomId,
-          to: peerId, 
+          to: peerId,
           data: jsonEncode(offer.toMap()),
         ),
       );
@@ -165,7 +165,7 @@ class CallNotifier extends Notifier<CallState> {
     final peerId = message.sender;
     if (peerId == null) return;
 
-    // We are an existing peer. A new person joined! 
+    // We are an existing peer. A new person joined!
     // We create a connection for them, but WE DO NOT send an offer. We wait for theirs.
     await _initializePeerConnection(peerId);
   }
@@ -242,22 +242,22 @@ class CallNotifier extends Notifier<CallState> {
   }
 
   Future<void> _initializePeerConnection(String peerId) async {
+    // 1. Guard against duplicates
+    if (state.peerConnections.containsKey(peerId)) return;
     final webrtcRepo = ref.read(webRtcRepoProvider);
-
-    // 1. Create the Peer Connection
     final pc = await webrtcRepo.createConnection();
 
-    // 2. Add our local camera/mic tracks so the other person can see/hear us
+    // 2. SAVE TO STATE IMMEDIATELY (before addTrack)!
+    final newConns = Map<String, RTCPeerConnection>.from(state.peerConnections);
+    newConns[peerId] = pc;
+    state = state.copyWith(peerConnections: newConns);
+
+    // 3. Add tracks in background
     if (state.localStream != null) {
       for (final track in state.localStream!.getTracks()) {
         await pc.addTrack(track, state.localStream!);
       }
     }
-
-    // 3. Save it to our state map
-    final newConns = Map<String, RTCPeerConnection>.from(state.peerConnections);
-    newConns[peerId] = pc;
-    state = state.copyWith(peerConnections: newConns);
 
     // 4. Setup listeners
     pc.onIceCandidate = (candidate) {
@@ -293,9 +293,12 @@ class CallNotifier extends Notifier<CallState> {
 
     pc.onConnectionState = (connectionState) {
       log('WebRTC Connection State for $peerId: $connectionState');
-      if (connectionState == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-          connectionState == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          connectionState == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+      if (connectionState ==
+              RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          connectionState ==
+              RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+          connectionState ==
+              RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         _handlePeerDisconnected(peerId);
       }
     };
@@ -310,9 +313,12 @@ class CallNotifier extends Notifier<CallState> {
     state.peerConnections[peerId]?.dispose();
 
     // Remove them from maps
-    final newConns = Map<String, RTCPeerConnection>.from(state.peerConnections)..remove(peerId);
-    final newStreams = Map<String, MediaStream>.from(state.remoteStreams)..remove(peerId);
-    final newChannels = Map<String, RTCDataChannel>.from(state.dataChannels)..remove(peerId);
+    final newConns = Map<String, RTCPeerConnection>.from(state.peerConnections)
+      ..remove(peerId);
+    final newStreams = Map<String, MediaStream>.from(state.remoteStreams)
+      ..remove(peerId);
+    final newChannels = Map<String, RTCDataChannel>.from(state.dataChannels)
+      ..remove(peerId);
 
     state = state.copyWith(
       peerConnections: newConns,
@@ -329,7 +335,7 @@ class CallNotifier extends Notifier<CallState> {
     final channel = await pc.createDataChannel('chat', init);
 
     _bindDataChannelListeners(channel, peerId);
-    
+
     final newChannels = Map<String, RTCDataChannel>.from(state.dataChannels);
     newChannels[peerId] = channel;
     state = state.copyWith(dataChannels: newChannels);
@@ -360,7 +366,7 @@ class CallNotifier extends Notifier<CallState> {
     if (text.trim().isEmpty) return;
 
     bool messageSent = false;
-    
+
     // Broadcast the text message to EVERY peer in the room
     for (final channel in state.dataChannels.values) {
       if (channel.state == RTCDataChannelState.RTCDataChannelOpen) {
