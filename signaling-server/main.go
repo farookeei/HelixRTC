@@ -179,7 +179,8 @@ func (c *Client) readPump() {
 			room.mu.RUnlock()
 
 		case "offer", "answer", "candidate":
-			// We need to route this message to a specific peer in the room
+			// Ensure Sender is attached so the recipient knows who sent it
+			msg.Sender = c.ID
 			if c.Room != nil && msg.To != "" {
 				msgBytes, _ := json.Marshal(msg)
 
@@ -187,7 +188,7 @@ func (c *Client) readPump() {
 				for client := range c.Room.Clients {
 					if client.ID == msg.To {
 						client.Send <- msgBytes // Send to the specific target
-						break // Found the target, no need to keep looping
+						break                   // Found the target, no need to keep looping
 					}
 				}
 				c.Room.mu.RUnlock()

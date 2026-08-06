@@ -37,7 +37,9 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
     super.dispose();
   }
 
-  Future<void> _syncRemoteRenderers(Map<String, MediaStream> remoteStreams) async {
+  Future<void> _syncRemoteRenderers(
+    Map<String, MediaStream> remoteStreams,
+  ) async {
     // 1. Add new streams
     for (final entry in remoteStreams.entries) {
       final peerId = entry.key;
@@ -119,9 +121,7 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
         child: Stack(
           children: [
             // DYNAMIC VIDEO LAYOUT (1-on-1 PIP or 2x2 Grid)
-            Positioned.fill(
-              child: _buildVideoLayout(callState),
-            ),
+            Positioned.fill(child: _buildVideoLayout(callState)),
           ],
         ),
       ),
@@ -258,7 +258,12 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
     // 0 Remote Peers: Show local stream or Camera Off card
     if (remoteCount == 0) {
       if (callState.localStream != null) {
-        return _buildVideoTile(_localRenderer, label: 'You', isLocal: true);
+        return _buildVideoTile(
+          _localRenderer,
+          label: 'You',
+          isLocal: true,
+          isVideoMuted: callState.isVideoMuted,
+        );
       }
       return Center(
         child: Container(
@@ -324,12 +329,22 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: RTCVideoView(
-                    _localRenderer,
-                    mirror: true,
-                    objectFit:
-                        RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                  ),
+                  child: callState.isVideoMuted
+                      ? Container(
+                          color: Color(0xFF1E1E1E),
+                          child: Center(
+                            child: Icon(
+                              Icons.videocam_off,
+                              color: Colors.white54,
+                            ),
+                          ),
+                        )
+                      : RTCVideoView(
+                          _localRenderer,
+                          mirror: true,
+                          objectFit:
+                              RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        ),
                 ),
               ),
             ),
@@ -341,7 +356,14 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
     final tiles = <Widget>[];
 
     if (callState.localStream != null) {
-      tiles.add(_buildVideoTile(_localRenderer, label: 'You', isLocal: true));
+      tiles.add(
+        _buildVideoTile(
+          _localRenderer,
+          label: 'You',
+          isLocal: true,
+          isVideoMuted: callState.isVideoMuted,
+        ),
+      );
     }
 
     for (final entry in _remoteRenderers.entries) {
@@ -360,8 +382,12 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
     );
   }
 
-  Widget _buildVideoTile(RTCVideoRenderer renderer,
-      {required String label, bool isLocal = false}) {
+  Widget _buildVideoTile(
+    RTCVideoRenderer renderer, {
+    required String label,
+    bool isLocal = false,
+    bool isVideoMuted = false,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
@@ -373,11 +399,23 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
           Positioned.fill(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: RTCVideoView(
-                renderer,
-                mirror: isLocal,
-                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-              ),
+              child: isVideoMuted
+                  ? Container(
+                      color: Color(0xFF1E1E1E),
+                      child: Center(
+                        child: Icon(
+                          Icons.videocam_off,
+                          color: Colors.white38,
+                          size: 48,
+                        ),
+                      ),
+                    )
+                  : RTCVideoView(
+                      renderer,
+                      mirror: isLocal,
+                      objectFit:
+                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                    ),
             ),
           ),
           Positioned(
