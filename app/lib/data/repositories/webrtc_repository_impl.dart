@@ -12,9 +12,10 @@ class WebRTCRepositoryImpl implements WebRTCRepository {
     // Define the quality and type of media we want
     final Map<String, dynamic> mediaConstraints = {
       'audio': true,
-      'video': {
-        'facingMode': 'user', // Defaults to the front-facing "selfie" camera
-      },
+      // 'video': {
+      //   'facingMode': 'user', // Defaults to the front-facing "selfie" camera
+      // },
+      "video": true, //?macos returned error when using facingMode flag
     };
 
     // This single line from flutter_webrtc automatically handles asking the user
