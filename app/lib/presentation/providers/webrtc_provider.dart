@@ -29,7 +29,6 @@ class CallNotifier extends Notifier<CallState> {
 
     // Turn on the camera!
     final stream = await webrtcRepo.getLocalStream();
-
     state = state.copyWith(localStream: stream);
   }
 
@@ -44,7 +43,7 @@ class CallNotifier extends Notifier<CallState> {
 
       // Connect to the WebSocket signaling server
       // (Note: ws://10.0.2.2:8080/ws for Android emulator)
-      await signalingRepo.connect('ws://172.17.11.75:8080/ws');
+      await signalingRepo.connect('ws://192.168.0.110:8080/ws');
 
       // Listen for incoming messages from the server
       _signalingSubscription?.cancel();
