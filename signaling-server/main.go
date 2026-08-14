@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -223,10 +224,12 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 func main() {
 	// Define the route and the handler function
 	http.HandleFunc("/ws", handleConnections)
-
-	// Start the server
-	fmt.Println("Signaling server started on :8080")
-	err := http.ListenAndServe(":8080", nil)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Fallback to 8080 for local testing
+	}
+	fmt.Printf("Signaling server started on :%s\n", port)
+	err := http.ListenAndServe(":"+port, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe error: ", err)
 	}
