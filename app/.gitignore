@@ -26,6 +26,8 @@
 .pub/
 /build/
 
+.env
+
 # Web
 
 # Symbolication related
