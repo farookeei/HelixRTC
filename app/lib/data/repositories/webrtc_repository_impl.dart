@@ -28,10 +28,21 @@ class WebRTCRepositoryImpl implements WebRTCRepository {
 
   @override
   Future<RTCPeerConnection> createConnection() async {
-    // We provide Google's public STUN server so our WebRTC engine can figure out its own Public IP
     final Map<String, dynamic> configuration = {
       'iceServers': [
-        {'url': 'stun:stun.l.google.com:19302'},
+        {'urls': 'stun:stun.l.google.com:19302'},
+        {'urls': 'stun:stun1.l.google.com:19302'},
+        {'urls': 'stun:stun2.l.google.com:19302'},
+        {
+          'urls': 'turn:openrelay.metered.ca:80',
+          'username': 'openrelay',
+          'credential': 'openrelay',
+        },
+        {
+          'urls': 'turn:openrelay.metered.ca:443',
+          'username': 'openrelay',
+          'credential': 'openrelay',
+        },
       ],
     };
 
