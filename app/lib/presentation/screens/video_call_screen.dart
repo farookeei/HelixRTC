@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -170,18 +171,20 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    FloatingActionButton(
-                      heroTag: 'camera_switch',
-                      onPressed: () =>
-                          ref.read(callProvider.notifier).switchCamera(),
-                      backgroundColor: Colors.white24,
-                      elevation: 0,
-                      child: const Icon(
-                        Icons.flip_camera_ios,
-                        color: Colors.white,
+                    if (!kIsWeb) ...[
+                      const SizedBox(width: 16),
+                      FloatingActionButton(
+                        heroTag: 'camera_switch',
+                        onPressed: () =>
+                            ref.read(callProvider.notifier).switchCamera(),
+                        backgroundColor: Colors.white24,
+                        elevation: 0,
+                        child: const Icon(
+                          Icons.flip_camera_ios,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
+                    ],
                     if (callState.remoteStreams.isNotEmpty) ...[
                       const SizedBox(width: 16),
                       Badge(
