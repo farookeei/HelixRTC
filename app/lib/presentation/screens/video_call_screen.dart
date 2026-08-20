@@ -239,7 +239,7 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                         icon: const Icon(Icons.add_box),
                         backgroundColor: Colors.green,
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 12),
                       FloatingActionButton.extended(
                         heroTag: 'join_room',
                         onPressed: () => _showJoinRoomDialog(context),
@@ -247,6 +247,19 @@ class _VideoCallScreenState extends ConsumerState<VideoCallScreen> {
                         icon: const Icon(Icons.login),
                         backgroundColor: Colors.blueAccent,
                       ),
+                      if (callState.localStream != null) ...[
+                        const SizedBox(width: 12),
+                        FloatingActionButton(
+                          heroTag: 'exit_preview_camera',
+                          onPressed: () {
+                            ref.read(callProvider.notifier).endCall();
+                          },
+                          backgroundColor: Colors.redAccent,
+                          tooltip: 'Exit Preview & Turn Off Camera',
+                          elevation: 0,
+                          child: const Icon(Icons.close, color: Colors.white),
+                        ),
+                      ],
                     ],
                   ),
               ],

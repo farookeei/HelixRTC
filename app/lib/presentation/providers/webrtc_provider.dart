@@ -106,6 +106,25 @@ class CallNotifier extends Notifier<CallState> {
     );
   }
 
+  /// Stops all camera and microphone hardware tracks, leaves any room, and resets the call state completely.
+  void endCall() {
+    leaveRoom();
+
+    if (state.localStream != null) {
+      for (final track in state.localStream!.getTracks()) {
+        track.stop();
+      }
+      state.localStream!.dispose();
+    }
+
+    state = CallState(
+      localStream: null,
+      isConnecting: false,
+      isJoined: false,
+      roomId: null,
+    );
+  }
+
   void _handleSignalingMessage(SignalingMessage message) {
     log('Received message: ${message.type} from ${message.sender}');
 
