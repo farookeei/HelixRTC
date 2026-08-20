@@ -296,8 +296,6 @@ class CallNotifier extends Notifier<CallState> {
     pc.onConnectionState = (connectionState) {
       log('WebRTC Connection State for $peerId: $connectionState');
       if (connectionState ==
-              RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-          connectionState ==
               RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
           connectionState ==
               RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
